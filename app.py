@@ -82,11 +82,19 @@ ATTRIBUTE_SHORT = {
     "ศูนย์ยกกำลังอาร์ดี": "ปัดเศษเป็น 0",
 }
 
-# Theme
+# Theme (single source: the CSS custom properties below are generated from these)
 NAVY = "#0B1F3A"
-TEAL = "#0F9D8A"
+TEAL = "#0F9D8A"        # bars, icons, borders (non-text: 3.4:1 on white)
+TEAL_INK = "#0B7A6B"    # teal for text/links/widgets (5.2:1 on white, WCAG AA)
+ACCENT = "#C27C0E"      # the one accent: warnings and "look here" marks
+ACCENT_INK = "#A15C07"  # accent for text (5.2:1 on white)
+POSITIVE = "#0F7B5F"    # status: increase
+NEGATIVE = "#B42318"    # status: decrease / error
 TEXT = "#0F1B2D"
-MUTED = "#5B6B7F"
+MUTED = "#5B6B7F"       # 5.1:1 on the page background
+BG = "#F5F7FA"
+SURFACE = "#FFFFFF"
+BORDER = "#DCE3EC"
 GRID = "#E6EBF1"
 DIM = "#C9D3DF"
 # Validated categorical palette (light surface): lightness, chroma, CVD, contrast pass.
@@ -107,59 +115,85 @@ STATE_DEFAULTS = {
 }
 
 # ─────────────────────────────────────────────
-# Styles (only our own classes; no Streamlit-internal selectors)
+# Styles: all CSS lives here. Our own classes use the tokens in :root.
 # ─────────────────────────────────────────────
 CSS = f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
+:root {{
+  --navy:{NAVY}; --teal:{TEAL}; --teal-ink:{TEAL_INK}; --teal-50:#E7F5F2;
+  --accent:{ACCENT}; --accent-ink:{ACCENT_INK}; --pos:{POSITIVE}; --neg:{NEGATIVE};
+  --text:{TEXT}; --text-2:#334155; --muted:{MUTED}; --bg:{BG}; --surface:{SURFACE};
+  --border:{BORDER}; --border-soft:#E6EBF1;
+  --on-navy:#FFFFFF; --on-navy-2:#C8D3E1; --on-navy-3:#A9B7C9; --on-navy-accent:#7FD9CB;
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-pill:999px;
+  --shadow-sm:0 1px 2px rgba(11,31,58,.05);
+  --shadow-md:0 2px 8px rgba(11,31,58,.07);
+
+  --font:{FONT_FAMILY};
+  --fs-xs:.75rem; --fs-sm:.8125rem; --fs-base:.9375rem; --fs-md:1rem;
+  --fs-lg:1.25rem; --fs-xl:1.6rem; --fs-2xl:clamp(1.5rem, 2.6vw, 2.1rem);
+}}
 html, body, .stApp, .stMarkdown, button, input, select, textarea {{
-  font-family: {FONT_FAMILY};
+  font-family:var(--font);
 }}
 .lc-icon {{ display:inline-block; vertical-align:-0.18em; flex-shrink:0; }}
+.num {{ font-variant-numeric:tabular-nums; }}
 
+/* Header */
 .app-header {{
-  background:{NAVY}; color:#FFFFFF; border-radius:14px;
-  padding:26px 30px 20px; margin:0 0 18px;
+  background:var(--navy); color:var(--on-navy); border-radius:var(--r-lg);
+  padding:var(--s5) var(--s6) var(--s4); margin:0 0 var(--s4); box-shadow:var(--shadow-md);
 }}
 .app-header .eyebrow {{
-  display:flex; align-items:center; gap:8px; color:#7FD9CB;
-  font-size:.8rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+  display:flex; align-items:center; gap:var(--s2); color:var(--on-navy-accent);
+  font-size:var(--fs-xs); font-weight:600; letter-spacing:.08em; text-transform:uppercase;
 }}
 .app-header h1 {{
-  color:#FFFFFF; font-size:clamp(1.5rem, 2.6vw, 2.1rem); font-weight:700;
-  margin:6px 0 4px; padding:0; line-height:1.25;
+  color:var(--on-navy); font-size:var(--fs-2xl); font-weight:700;
+  margin:var(--s2) 0 var(--s1); padding:0; line-height:1.25;
 }}
-.app-header .lead {{ color:#C8D3E1; font-size:1rem; margin:0 0 14px; line-height:1.6; }}
+.app-header .lead {{
+  color:var(--on-navy-2); font-size:var(--fs-md); margin:0 0 var(--s3); line-height:1.6;
+}}
 .app-header .meta {{
-  display:flex; flex-wrap:wrap; gap:6px 22px; color:#A9B7C9; font-size:.85rem;
-  border-top:1px solid rgba(255,255,255,.12); padding-top:12px;
+  display:flex; flex-wrap:wrap; gap:var(--s2) var(--s5); color:var(--on-navy-3);
+  font-size:var(--fs-sm); border-top:1px solid rgba(255,255,255,.12); padding-top:var(--s3);
+  font-variant-numeric:tabular-nums;
 }}
 .app-header .meta span {{ display:inline-flex; align-items:center; gap:6px; }}
-.app-header .meta b {{ color:#FFFFFF; font-weight:600; }}
-.app-header .meta a {{ color:#7FD9CB; text-decoration:underline; text-underline-offset:3px; }}
-.app-footer a {{ color:{TEAL}; }}
+.app-header .meta b {{ color:var(--on-navy); font-weight:600; }}
+.app-header .meta a {{
+  color:var(--on-navy-accent); text-decoration:underline; text-underline-offset:3px;
+}}
 
-.chips {{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; align-items:center; }}
-.chips .lbl {{ color:{MUTED}; font-size:.85rem; margin-right:2px; }}
+/* Chips (filter summary, row counts) */
+.chips {{
+  display:flex; flex-wrap:wrap; gap:var(--s2); margin:0 0 var(--s4); align-items:center;
+}}
+.chips .lbl {{ color:var(--muted); font-size:var(--fs-sm); margin-right:var(--s1); }}
 .chip {{
-  display:inline-flex; align-items:center; gap:6px; background:#FFFFFF;
-  border:1px solid #DCE3EC; border-radius:999px; padding:4px 12px;
-  font-size:.85rem; color:{TEXT};
+  display:inline-flex; align-items:center; gap:6px; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r-pill); padding:var(--s1) var(--s3);
+  font-size:var(--fs-sm); color:var(--text); box-shadow:var(--shadow-sm);
+  font-variant-numeric:tabular-nums; max-width:100%;
 }}
 
 /* KPI cards: label -> value + unit -> sub. Rows share one subgrid so labels, values
    and subs line up across a row and every card in a row has the same height.
    Column count follows the width of the content area, not the viewport. */
-.kpi-wrap {{ container-type:inline-size; margin:0 0 8px; }}
+.kpi-wrap {{ container-type:inline-size; margin:0 0 var(--s2); }}
 .kpi-grid {{
-  display:grid; gap:12px; grid-template-columns:repeat(2, minmax(0, 1fr));
+  display:grid; gap:var(--s3); grid-template-columns:repeat(2, minmax(0, 1fr));
   grid-auto-rows:auto;
 }}
 .kpi {{
   display:grid; grid-row:span 3; grid-template-rows:subgrid; row-gap:6px;
   align-content:start; container-type:inline-size;
-  background:#FFFFFF; border:1px solid #E1E7EF; border-radius:12px;
-  padding:16px; min-width:0;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md);
+  padding:var(--s4); min-width:0; box-shadow:var(--shadow-sm);
 }}
 .kpi.wide {{ grid-column:span 2; }}
 @container (min-width: 600px) {{
@@ -172,49 +206,88 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
   .kpi, .kpi.wide, .kpi:nth-child(n+4) {{ grid-column:auto; }}
 }}
 .kpi .k-label {{
-  display:flex; align-items:flex-start; gap:6px; color:{MUTED};
-  font-size:.86rem; font-weight:500; line-height:1.4;
+  display:flex; align-items:flex-start; gap:6px; color:var(--muted);
+  font-size:var(--fs-sm); font-weight:500; line-height:1.4;
 }}
 .kpi .k-label .lc-icon {{ margin-top:2px; }}
 .kpi .k-value {{
   display:flex; align-items:baseline; gap:6px; white-space:nowrap;
-  color:{NAVY}; font-weight:700; line-height:1.25;
-  font-size:clamp(1.2rem, 13.5cqi, 1.6rem); font-variant-numeric:tabular-nums;
+  color:var(--navy); font-weight:700; line-height:1.25;
+  font-size:clamp(1.2rem, 13.5cqi, var(--fs-xl)); font-variant-numeric:tabular-nums;
 }}
 .kpi .k-value.text {{ white-space:normal; overflow-wrap:anywhere; }}
-.kpi .k-value .unit {{ font-size:.8rem; font-weight:500; color:{MUTED}; }}
+.kpi .k-value .unit {{ font-size:var(--fs-sm); font-weight:500; color:var(--muted); }}
 .kpi .k-sub {{
-  color:{MUTED}; font-size:.8rem; line-height:1.5; overflow-wrap:anywhere;
+  color:var(--muted); font-size:var(--fs-sm); line-height:1.5; overflow-wrap:anywhere;
   font-variant-numeric:tabular-nums;
 }}
 .kpi .k-sub .nw {{ white-space:nowrap; }}
-.kpi.accent {{ border-top:3px solid {TEAL}; padding-top:14px; }}
+.kpi.accent {{ border-top:3px solid var(--teal); padding-top:calc(var(--s4) - 2px); }}
 
+/* Section headings: icon + title + one-line description */
 .section {{
-  display:flex; align-items:center; gap:10px; margin:28px 0 2px;
-  padding-bottom:8px; border-bottom:1px solid #DCE3EC;
+  display:flex; align-items:center; gap:var(--s3); margin:var(--s6) 0 var(--s1);
+  padding-bottom:var(--s2); border-bottom:1px solid var(--border);
 }}
-.section h3 {{ font-size:1.15rem; font-weight:600; color:{NAVY}; margin:0; padding:0; }}
-.section-desc {{ color:{MUTED}; font-size:.9rem; margin:6px 0 10px; line-height:1.55; }}
+.section .s-icon {{
+  display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px;
+  border-radius:var(--r-sm); background:var(--teal-50); flex-shrink:0;
+}}
+.section h3 {{
+  font-size:var(--fs-lg); font-weight:600; color:var(--navy); margin:0; padding:0;
+  line-height:1.35;
+}}
+.section-desc {{
+  color:var(--muted); font-size:var(--fs-base); margin:var(--s2) 0 var(--s3); line-height:1.6;
+}}
 
+/* Sidebar */
 .side-title {{
-  display:flex; align-items:center; gap:8px; font-weight:600; color:{NAVY};
-  font-size:1.02rem; margin:0 0 4px;
+  display:flex; align-items:center; gap:var(--s2); font-weight:600; color:var(--navy);
+  font-size:var(--fs-md); margin:0 0 var(--s1);
 }}
+.side-group {{
+  color:var(--muted); font-size:var(--fs-xs); font-weight:600; letter-spacing:.06em;
+  text-transform:uppercase; margin:var(--s4) 0 var(--s1);
+}}
+
+/* Callouts */
 .note {{
-  display:flex; gap:10px; align-items:flex-start; background:#FFFFFF;
-  border:1px solid #DCE3EC; border-left:3px solid {TEAL}; border-radius:8px;
-  padding:10px 14px; color:#334155; font-size:.88rem; line-height:1.6; margin:6px 0 10px;
+  display:flex; gap:var(--s3); align-items:flex-start; background:var(--surface);
+  border:1px solid var(--border); border-left:3px solid var(--teal); border-radius:var(--r-sm);
+  padding:var(--s3) var(--s4); color:var(--text-2); font-size:var(--fs-base); line-height:1.6;
+  margin:var(--s2) 0 var(--s3); box-shadow:var(--shadow-sm);
 }}
-.note.warn {{ border-left-color:#C27C0E; }}
-.note.error {{ border-left-color:#C2410C; }}
+.note.warn {{ border-left-color:var(--accent); }}
+.note.error {{ border-left-color:var(--neg); }}
 .note .lc-icon {{ margin-top:3px; }}
 
-.app-footer {{
-  margin-top:34px; padding:16px 0 4px; border-top:1px solid #DCE3EC;
-  color:{MUTED}; font-size:.84rem; line-height:1.7;
+/* Empty state */
+.empty {{
+  text-align:center; background:var(--surface); border:1px dashed var(--border);
+  border-radius:var(--r-lg); padding:var(--s6) var(--s5); margin:var(--s5) 0;
 }}
-.app-footer .row {{ display:flex; gap:8px; align-items:flex-start; }}
+.empty .e-icon {{
+  display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
+  border-radius:var(--r-pill); background:var(--teal-50); margin-bottom:var(--s3);
+}}
+.empty h4 {{ color:var(--navy); font-size:var(--fs-lg); font-weight:600; margin:0 0 var(--s2); padding:0; }}
+.empty p {{ color:var(--text-2); font-size:var(--fs-base); margin:0 auto; max-width:46ch; line-height:1.6; }}
+.empty ul {{
+  display:inline-block; text-align:left; color:var(--text-2); font-size:var(--fs-base);
+  margin:var(--s3) 0 0; padding-left:var(--s5); line-height:1.7;
+}}
+
+/* Footer */
+.app-footer {{
+  margin-top:var(--s6); padding:var(--s4); background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--r-md);
+  color:var(--muted); font-size:var(--fs-sm); line-height:1.7;
+  display:grid; gap:var(--s2);
+}}
+.app-footer .row {{ display:flex; gap:var(--s2); align-items:flex-start; }}
+.app-footer .row .lc-icon {{ margin-top:4px; }}
+.app-footer a {{ color:var(--teal-ink); overflow-wrap:anywhere; }}
 </style>
 """
 
@@ -230,13 +303,14 @@ def note(text: str, kind: str = "info") -> None:
     """Callout with a Lucide icon. `text` must be trusted or pre-escaped."""
     name = {"info": "info", "warn": "triangle-alert", "error": "circle-alert",
             "ok": "circle-check"}[kind]
-    color = {"info": TEAL, "warn": "#C27C0E", "error": "#C2410C", "ok": TEAL}[kind]
+    color = {"info": TEAL_INK, "warn": ACCENT_INK, "error": NEGATIVE, "ok": TEAL_INK}[kind]
     html(f'<div class="note {kind}">{icon(name, 16, color)}<div>{text}</div></div>')
 
 
 def section(icon_name: str, title: str, desc: str | None = None) -> None:
     html(
-        f'<div class="section">{icon(icon_name, 20, TEAL)}<h3>{escape(title)}</h3></div>'
+        f'<div class="section"><span class="s-icon">{icon(icon_name, 18, TEAL_INK)}</span>'
+        f'<h3>{escape(title)}</h3></div>'
         + (f'<div class="section-desc">{desc}</div>' if desc else "")
     )
 
