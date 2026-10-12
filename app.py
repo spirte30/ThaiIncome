@@ -7,11 +7,14 @@ values are always shown for ONE selected category and never summed across
 categories.
 """
 
+import re
 from html import escape
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+import plotly.io as pio
 import streamlit as st
 
 from icons import icon
@@ -240,6 +243,12 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
 .section-desc {{
   color:var(--muted); font-size:var(--fs-base); margin:var(--s2) 0 var(--s3); line-height:1.6;
 }}
+
+.chart-title {{
+  color:var(--navy); font-size:var(--fs-md); font-weight:600; line-height:1.45;
+  margin:var(--s4) 0 0;
+}}
+.chart-sub {{ color:var(--muted); font-size:var(--fs-sm); line-height:1.5; margin:0 0 var(--s1); }}
 
 /* Sidebar */
 .side-title {{
@@ -556,30 +565,81 @@ def render_kpis(k: dict, f: dict) -> None:
 # ─────────────────────────────────────────────
 # Charts
 # ─────────────────────────────────────────────
-PLOTLY_CONFIG = {"displaylogo": False, "modeBarButtonsToRemove": ["lasso2d", "select2d"]}
+PLOTLY_CONFIG = {"displaylogo": False, "displayModeBar": "hover",
+                 "modeBarButtonsToRemove": ["lasso2d", "select2d"]}
+
+# One template for every chart: font, surfaces, hairline grid, tight margins, hover.
+pio.templates["thai_income"] = go.layout.Template(
+    layout=dict(
+        font=dict(family=FONT_FAMILY, color=TEXT, size=13),
+        paper_bgcolor=SURFACE,
+        plot_bgcolor=SURFACE,
+        colorway=[TEAL] + CATEGORICAL,
+        margin=dict(l=8, r=16, t=16, b=8),
+        separators=".,",
+        hoverlabel=dict(bgcolor=SURFACE, bordercolor=BORDER, align="left",
+                        font=dict(family=FONT_FAMILY, color=TEXT, size=13)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+                    title_text="", font=dict(size=12, color=TEXT)),
+        bargap=0.28,
+        xaxis=dict(gridcolor=GRID, gridwidth=1, zerolinecolor="#AEB9C7", linecolor=GRID,
+                   tickformat="~s", ticks="", automargin=True,
+                   title=dict(font=dict(size=12, color=MUTED), standoff=8),
+                   tickfont=dict(color=MUTED, size=12)),
+        yaxis=dict(gridcolor=GRID, zerolinecolor="#AEB9C7", linecolor=GRID, ticks="",
+                   automargin=True, title=dict(font=dict(size=12, color=MUTED)),
+                   tickfont=dict(color=TEXT, size=12)),
+    )
+)
 
 
 def style_fig(fig, height: int, *, legend: bool = False):
-    fig.update_layout(
-        template="plotly_white",
-        height=height,
-        font=dict(family=FONT_FAMILY, color=TEXT, size=13),
-        title=dict(font=dict(size=15, color=NAVY), x=0, xanchor="left"),
-        margin=dict(l=8, r=24, t=56, b=8),
-        paper_bgcolor="#FFFFFF",
-        plot_bgcolor="#FFFFFF",
-        hoverlabel=dict(bgcolor="#FFFFFF", bordercolor="#DCE3EC",
-                        font=dict(family=FONT_FAMILY, color=TEXT, size=13)),
-        showlegend=legend,
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0,
-                    title_text="", font=dict(size=12)),
-        bargap=0.28,
-    )
-    fig.update_xaxes(gridcolor=GRID, zerolinecolor="#AEB9C7", linecolor=GRID,
-                     title_font=dict(size=12, color=MUTED), tickfont=dict(color=MUTED))
-    fig.update_yaxes(gridcolor=GRID, zerolinecolor="#AEB9C7", linecolor=GRID,
-                     title_font=dict(size=12, color=MUTED), tickfont=dict(color=TEXT))
+    # Plotly Express and Streamlit's frontend both write explicit layout values (margin,
+    # legend title, background, font) that outrank a template, so the template's layout
+    # is applied explicitly as well. The template stays the single source of truth.
+    fig.update_layout(template="thai_income")
+    fig.update_layout(pio.templates["thai_income"].layout.to_plotly_json())
+    fig.update_layout(height=height, showlegend=legend, legend_title_text="")
     return fig
+
+
+def show_chart(fig) -> None:
+    """Render the chart title as HTML (wraps on narrow screens) and the figure below it.
+
+    theme=None keeps Streamlit's chart theme from overriding the shared template.
+    """
+    title = fig.layout.title.text
+    if title:
+        html(f'<div class="chart-title">{escape(title)}</div>')
+        fig.update_layout(title_text="")
+    # The value-axis title (measure + unit) can't wrap inside Plotly, so it moves here too.
+    measure = fig.layout.xaxis.title.text
+    if measure:
+        html(f'<div class="chart-sub">{escape(measure)}</div>')
+        fig.update_xaxes(title_text="")
+    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG, theme=None)
+
+
+def wrap_label(text: str, width: int = 24) -> str:
+    """Split a long axis label onto two lines at the separator nearest its middle.
+
+    Display only (used as ticktext); the category values themselves are untouched.
+    """
+    if len(text) <= width:
+        return text
+    mid = len(text) / 2
+    cuts = [i + 1 for i, ch in enumerate(text) if ch in "_/ "]
+    cuts += [m.end() for m in re.finditer("และ", text)]
+    cuts = [c for c in cuts if 0 < c < len(text)]
+    if not cuts:
+        return text
+    cut = min(cuts, key=lambda c: abs(c - mid))
+    return text[:cut].rstrip("_ ") + "<br>" + text[cut:].lstrip("_ ")
+
+
+def wrap_category_ticks(fig, categories: list[str]) -> None:
+    fig.update_yaxes(tickmode="array", tickvals=categories,
+                     ticktext=[wrap_label(c) for c in categories])
 
 
 def province_chart(df: pd.DataFrame, f: dict, view: str):
@@ -629,8 +689,7 @@ def province_chart(df: pd.DataFrame, f: dict, view: str):
             + "<extra></extra>"
         ),
     )
-    fig.update_yaxes(categoryorder="array", categoryarray=show["province"].tolist(),
-                     tickfont=dict(size=12))
+    fig.update_yaxes(categoryorder="array", categoryarray=show["province"].tolist())
     style_fig(fig, max(360, 26 * len(show) + 90), legend=highlight)
     return fig, many
 
@@ -670,10 +729,9 @@ def group_chart(df: pd.DataFrame, f: dict):
             ok = (f["class1"] in (ALL_GROUPS, c1)) and (f["class2"] in (ALL_GROUPS, c2))
             keep.append(1.0 if ok else 0.25)
         trace.marker.opacity = keep
-    fig.update_yaxes(categoryorder="array", categoryarray=agg["soc_eco_class2"].tolist(),
-                     tickfont=dict(size=11))
-    style_fig(fig, 470, legend=True)
-    fig.update_layout(legend=dict(y=-0.32, yanchor="top"), margin=dict(b=8))
+    fig.update_yaxes(categoryorder="array", categoryarray=agg["soc_eco_class2"].tolist())
+    wrap_category_ticks(fig, agg["soc_eco_class2"].tolist())
+    style_fig(fig, 44 * len(agg) + 150, legend=True)
     return fig, many
 
 
@@ -715,11 +773,9 @@ def composition_chart(df: pd.DataFrame, f: dict):
             + "<extra></extra>"
         ),
     )
-    fig.update_yaxes(categoryorder="array", categoryarray=agg["source_income3"].tolist(),
-                     tickfont=dict(size=11))
+    fig.update_yaxes(categoryorder="array", categoryarray=agg["source_income3"].tolist())
     # A one-item legend says nothing when every leaf falls under the selection.
-    style_fig(fig, 470, legend=len(fig.data) > 1)
-    fig.update_layout(legend=dict(y=-0.2, yanchor="top"))
+    style_fig(fig, 40 * len(agg) + 130, legend=len(fig.data) > 1)
     return fig, many
 
 
@@ -744,7 +800,8 @@ def year_chart(df: pd.DataFrame, f: dict):
         marker_line_width=0,
         hovertemplate="<b>%{y}</b><br>%{fullData.name}: %{x:,.0f} " + UNIT_LABEL + "<extra></extra>",
     )
-    style_fig(fig, max(320, 46 * agg["soc_eco_class2"].nunique() + 110), legend=True)
+    wrap_category_ticks(fig, order)
+    style_fig(fig, max(320, 52 * agg["soc_eco_class2"].nunique() + 120), legend=True)
     fig.update_layout(bargap=0.22, bargroupgap=0.06)
     return fig
 
@@ -920,7 +977,7 @@ def main() -> None:
         label_visibility="collapsed",
     ) or "top"
     fig, many = province_chart(df, f, view)
-    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+    show_chart(fig)
     if many:
         note(f'แต่ละจังหวัดมีหลายกลุ่มเศรษฐกิจและสังคม ค่าในกราฟคือ<b>{STATS[f["stat"]]}</b>'
              "ของกลุ่มย่อย (ไม่ถ่วงน้ำหนักด้วยจำนวนครัวเรือน) ไม่ใช่รายได้เฉลี่ยของประชากรทั้งจังหวัด "
@@ -929,20 +986,17 @@ def main() -> None:
 
     # Section 2: groups & composition
     section("chart-no-axes-combined", "กลุ่มเศรษฐกิจและสังคม และองค์ประกอบรายได้",
-            "กราฟซ้ายแสดงทุกกลุ่มย่อยโดยจางกลุ่มที่อยู่นอกตัวกรอง กราฟขวาแสดง 7 หมวดย่อยที่ไม่ซ้อนกัน "
+            "กราฟแรกแสดงทุกกลุ่มย่อยโดยจางกลุ่มที่อยู่นอกตัวกรอง กราฟที่สองแสดง 7 หมวดย่อยที่ไม่ซ้อนกัน "
             "ผลรวมของทั้ง 7 หมวดเท่ากับรายได้ทั้งสิ้น (คลาดเคลื่อนไม่เกิน ±2 บาทจากการปัดเศษ)")
-    left, right = st.columns(2, gap="large")
-    with left:
-        fig, many = group_chart(df, f)
-        st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
-        if many:
-            st.caption(f'{STATS[f["stat"]]}ของทุกจังหวัดในกลุ่มนั้น (ไม่ถ่วงน้ำหนัก)')
-    with right:
-        fig, many = composition_chart(df, f)
-        st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
-        st.caption("แถบสีเขียวคือหมวดย่อยที่อยู่ภายใต้หมวดรายได้ที่เลือก"
-                   + (" · ใช้ค่าเฉลี่ยเสมอ เพราะค่าเฉลี่ยของหมวดย่อยรวมกันได้เท่ากับยอดรวม"
-                      " (มัธยฐานไม่มีคุณสมบัตินี้)" if many else ""))
+    fig, many = group_chart(df, f)
+    show_chart(fig)
+    if many:
+        st.caption(f'{STATS[f["stat"]]}ของทุกจังหวัดในกลุ่มนั้น (ไม่ถ่วงน้ำหนัก)')
+    fig, many = composition_chart(df, f)
+    show_chart(fig)
+    st.caption("แถบสีเขียวคือหมวดย่อยที่อยู่ภายใต้หมวดรายได้ที่เลือก"
+               + (" · ใช้ค่าเฉลี่ยเสมอ เพราะค่าเฉลี่ยของหมวดย่อยรวมกันได้เท่ากับยอดรวม"
+                  " (มัธยฐานไม่มีคุณสมบัตินี้)" if many else ""))
 
     # Section 3: year comparison
     section("calendar-days", "เปรียบเทียบระหว่างปี")
@@ -953,7 +1007,7 @@ def main() -> None:
         if fig is None:
             note("ไม่มีข้อมูลสำหรับการเปรียบเทียบระหว่างปี", "warn")
         else:
-            st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
+            show_chart(fig)
 
     # Section 4: table
     section("table", "ตารางข้อมูล", "ข้อมูลที่ผ่านตัวกรองทั้งหมด ค่าเป็นค่าจริงจากไฟล์ต้นฉบับ")
