@@ -58,6 +58,9 @@ INCOME_LEAVES = [c for c in INCOME_PARENT if c not in INCOME_PARENT.values()]
 ALL_PROVINCES = "ทุกจังหวัด"
 ALL_GROUPS = "ทุกกลุ่ม"
 UNIT_LABEL = "บาท/เดือน"
+# Verified: table SFD_SPB0802_66 in this dataset matches data.xlsx row-for-row (15,400 rows).
+SOURCE_URL = "https://data.go.th/dataset/os_08_00007"
+SOURCE_TITLE = "รายได้เฉลี่ยต่อเดือนของครัวเรือน จำแนกตามแหล่งที่มาของรายได้ และสถานะทางเศรษฐสังคมของครัวเรือน"
 
 THAI_COLS = {
     "year": "ปี (พ.ศ.)",
@@ -133,6 +136,8 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
 }}
 .app-header .meta span {{ display:inline-flex; align-items:center; gap:6px; }}
 .app-header .meta b {{ color:#FFFFFF; font-weight:600; }}
+.app-header .meta a {{ color:#7FD9CB; text-decoration:underline; text-underline-offset:3px; }}
+.app-footer a {{ color:{TEAL}; }}
 
 .chips {{ display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; align-items:center; }}
 .chips .lbl {{ color:{MUTED}; font-size:.85rem; margin-right:2px; }}
@@ -709,6 +714,8 @@ def render_quality(issues: dict) -> None:
 def render_header(df: pd.DataFrame | None) -> None:
     meta = [
         f'<span>{icon("database", 15, "#7FD9CB")}แหล่งข้อมูล <b>สำนักงานสถิติแห่งชาติ</b></span>',
+        f'<span>{icon("link", 15, "#7FD9CB")}<a href="{SOURCE_URL}" target="_blank" '
+        f'rel="noopener noreferrer">ชุดข้อมูลบน data.go.th</a></span>',
         f'<span>{icon("wallet", 15, "#7FD9CB")}หน่วย <b>{UNIT_LABEL}</b></span>',
     ]
     if df is not None:
@@ -744,7 +751,9 @@ def render_footer() -> None:
     html(
         '<div class="app-footer">'
         f'<div class="row">{icon("database", 15, MUTED)}<div>แหล่งข้อมูล: '
-        'สำนักงานสถิติแห่งชาติ (ตามคอลัมน์ source ในไฟล์ data.xlsx)</div></div>'
+        f'สำนักงานสถิติแห่งชาติ · {SOURCE_TITLE} · '
+        f'<a href="{SOURCE_URL}" target="_blank" rel="noopener noreferrer">{SOURCE_URL}</a>'
+        '</div></div>'
         f'<div class="row">{icon("triangle-alert", 15, MUTED)}<div>ข้อจำกัด: ไฟล์มีทั้งหมวดยอดรวม'
         'และหมวดย่อย การรวมทุกแถวจะนับรายได้ซ้ำ มัธยฐานและค่าเฉลี่ยในแดชบอร์ด'
         'คำนวณจากรายการ (จังหวัด × กลุ่มย่อย) ไม่ใช่ค่าของประชากร เพราะไม่มีจำนวนครัวเรือนสำหรับถ่วงน้ำหนัก</div></div>'
