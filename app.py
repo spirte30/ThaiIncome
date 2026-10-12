@@ -873,7 +873,7 @@ def short_attribute(text) -> str:
 def table_column_config() -> dict:
     """Display-only settings: widths, number format, alignment. Values are untouched."""
     return {
-        THAI_COLS["year"]: st.column_config.NumberColumn("ปี", format="%d", width=56),
+        THAI_COLS["year"]: st.column_config.NumberColumn("ปี พ.ศ.", format="%d", width=64),
         THAI_COLS["province"]: st.column_config.TextColumn("จังหวัด", width=124),
         THAI_COLS["value"]: st.column_config.NumberColumn(
             f"มูลค่า ({UNIT_LABEL})", format="%,d", width=136,
