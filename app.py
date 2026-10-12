@@ -251,6 +251,13 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
 }}
 .chart-sub {{ color:var(--muted); font-size:var(--fs-sm); line-height:1.5; margin:0 0 var(--s1); }}
 
+/* Charts with a narrow-screen variant (labels above bars below 640px) */
+.st-key-group_chart_narrow {{ display:none; }}
+@media (max-width: 640px) {{
+  .st-key-group_chart_wide {{ display:none; }}
+  .st-key-group_chart_narrow {{ display:block; }}
+}}
+
 /* Sidebar */
 .side-title {{
   display:flex; align-items:center; gap:var(--s2); font-weight:600; color:var(--navy);
@@ -617,10 +624,12 @@ def style_fig(fig, height: int, *, legend: bool = False):
     return fig
 
 
-def show_chart(fig) -> None:
+def show_chart(fig, narrow_fig=None, key: str | None = None) -> None:
     """Render the chart title as HTML (wraps on narrow screens) and the figure below it.
 
     theme=None keeps Streamlit's chart theme from overriding the shared template.
+    With `narrow_fig`, both figures are rendered and CSS shows the narrow one below
+    640px (the server cannot know the viewport width).
     """
     title = fig.layout.title.text
     if title:
@@ -631,7 +640,36 @@ def show_chart(fig) -> None:
     if measure:
         html(f'<div class="chart-sub">{escape(measure)}</div>')
         fig.update_xaxes(title_text="")
-    st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG, theme=None)
+    if narrow_fig is None:
+        st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG, theme=None)
+        return
+    narrow_fig.update_layout(title_text="")
+    narrow_fig.update_xaxes(title_text="")
+    with st.container(key=f"{key}_wide"):
+        st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG, theme=None)
+    with st.container(key=f"{key}_narrow"):
+        st.plotly_chart(narrow_fig, width="stretch", config=PLOTLY_CONFIG, theme=None)
+
+
+def labels_above_bars(fig, categories: list[str], row_px: int = 56):
+    """Copy of a horizontal bar chart with each category label above its bar.
+
+    For narrow screens, where axis labels would leave the bars no room. Same traces
+    and data; only the label placement and height change.
+    """
+    narrow = go.Figure(fig)
+    narrow.update_yaxes(showticklabels=False, tickmode="auto")
+    narrow.update_layout(
+        meta="narrow-labels", bargap=0.6, height=row_px * len(categories) + 150,
+        margin=dict(l=4, r=12, t=16, b=8),
+        annotations=[
+            dict(text=escape(c), x=0, xref="paper", xanchor="left", y=c, yref="y",
+                 yanchor="bottom", yshift=row_px * (1 - 0.6) / 2 - 1, showarrow=False,
+                 font=dict(size=12, color=TEXT), align="left")
+            for c in categories
+        ],
+    )
+    return narrow
 
 
 def wrap_label(text: str, width: int = 24) -> str:
@@ -1027,7 +1065,8 @@ def main() -> None:
             "กราฟแรกแสดงทุกกลุ่มย่อยโดยจางกลุ่มที่อยู่นอกตัวกรอง กราฟที่สองแสดง 7 หมวดย่อยที่ไม่ซ้อนกัน "
             "ผลรวมของทั้ง 7 หมวดเท่ากับรายได้ทั้งสิ้น (คลาดเคลื่อนไม่เกิน ±2 บาทจากการปัดเศษ)")
     fig, many = group_chart(df, f)
-    show_chart(fig)
+    show_chart(fig, labels_above_bars(fig, list(fig.layout.yaxis.categoryarray)),
+               key="group_chart")
     if many:
         st.caption(f'{STATS[f["stat"]]}ของทุกจังหวัดในกลุ่มนั้น (ไม่ถ่วงน้ำหนัก)')
     fig, many = composition_chart(df, f)
