@@ -831,29 +831,55 @@ def composition_chart(df: pd.DataFrame, f: dict):
 
 
 def year_chart(df: pd.DataFrame, f: dict):
-    """Selected province & category across years, by sub-group."""
+    """Selected province & category across years, by sub-group, as a dumbbell plot.
+
+    One dot per year (same values as before), joined by a line coloured by direction
+    (increase / decrease from the first to the latest year). Sorted by the latest year.
+    """
     data = filter_data(df, f, skip=("year",))
     agg = (data.groupby(["year", "soc_eco_class2"], as_index=False)["value"].mean())
     if agg.empty:
         return None
-    order = (agg[agg["year"] == agg["year"].max()]
+    years = sorted(agg["year"].unique())
+    first, last = years[0], years[-1]
+    order = (agg[agg["year"] == last]
              .sort_values("value", ascending=False)["soc_eco_class2"].tolist())
-    agg["ปี"] = "พ.ศ. " + agg["year"].astype(str)
-    fig = px.bar(
-        agg, x="value", y="soc_eco_class2", color="ปี", orientation="h", barmode="group",
-        category_orders={"ปี": [f"พ.ศ. {y}" for y in sorted(agg["year"].unique())],
-                         "soc_eco_class2": order},
-        color_discrete_sequence=YEAR_COLORS,
-        title=f"{f['income']} · {f['province']} เปรียบเทียบระหว่างปี",
-        labels={"value": f"มูลค่า ({UNIT_LABEL})", "soc_eco_class2": ""},
-    )
-    fig.update_traces(
-        marker_line_width=0,
-        hovertemplate="<b>%{y}</b><br>%{fullData.name}: %{x:,.0f} " + UNIT_LABEL + "<extra></extra>",
-    )
+    wide = agg.pivot(index="soc_eco_class2", columns="year", values="value").reindex(order)
+    change = wide[last] - wide[first]
+
+    fig = go.Figure()
+    for name, sign, color in (("เพิ่มขึ้น", 1, POSITIVE), ("ลดลง", -1, NEGATIVE)):
+        rows = wide[(change * sign) > 0]
+        if rows.empty or first == last:
+            continue
+        xs, ys = [], []
+        for group, row in rows.iterrows():
+            xs += [row[first], row[last], None]
+            ys += [group, group, None]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="lines", name=f"{name} (พ.ศ. {first} → {last})", meta="connector",
+            line=dict(color=color, width=3), hoverinfo="skip",
+        ))
+    diff_cd = pd.DataFrame({"a": wide[first], "b": wide[last], "d": change})
+    for year, color in zip(years, YEAR_COLORS if len(years) == 2 else [TEAL] * len(years)):
+        col = agg[agg["year"] == year].set_index("soc_eco_class2").reindex(order).dropna()
+        fig.add_trace(go.Scatter(
+            x=col["value"], y=col.index, mode="markers", name=f"พ.ศ. {year}",
+            marker=dict(color=color, size=12, line=dict(color=SURFACE, width=1.5)),
+            customdata=diff_cd.loc[col.index].to_numpy(),
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                f"พ.ศ. {first}: " + "%{customdata[0]:,.0f}<br>"
+                f"พ.ศ. {last}: " + "%{customdata[1]:,.0f}<br>"
+                "ผลต่าง: %{customdata[2]:+,.0f} " + UNIT_LABEL + "<extra></extra>"
+            ),
+        ))
+    fig.update_layout(title_text=f"{f['income']} · {f['province']} เปรียบเทียบระหว่างปี")
+    fig.update_xaxes(title_text=f"มูลค่า ({UNIT_LABEL})")
+    # Highest latest-year value at the top.
+    fig.update_yaxes(categoryorder="array", categoryarray=order[::-1])
     wrap_category_ticks(fig, order)
-    style_fig(fig, max(320, 52 * agg["soc_eco_class2"].nunique() + 120), legend=True)
-    fig.update_layout(bargap=0.22, bargroupgap=0.06)
+    style_fig(fig, max(320, 44 * len(order) + 120), legend=True)
     return fig
 
 
