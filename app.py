@@ -105,7 +105,8 @@ GRID = "#E6EBF1"
 # Charts use teal only: one base, darker/lighter steps, and a pale tint for faded marks.
 TEAL_DARK = "#0B6157"
 TEAL_FADED = "#CDE8E3"
-TEAL_SHADES = ["#0B6157", "#0F9D8A", "#4DBDAC", "#93D6CB"]  # dark -> light, one per group
+# dark -> light, one per group; every shade is >= 3:1 on white (lightest 3.26:1)
+TEAL_SHADES = ["#06403A", "#0B6157", "#0E8174", "#11A08E"]
 # Validated categorical palette (light surface): lightness, chroma, CVD, contrast pass.
 YEAR_COLORS = ["#7FCDC0", TEAL_DARK]  # earlier year light, latest year dark
 FONT_FAMILY = "Sarabun, 'Noto Sans Thai', sans-serif"
