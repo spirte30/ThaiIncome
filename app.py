@@ -660,9 +660,23 @@ def short_attribute(text) -> str:
     return str(text)
 
 
+def table_column_config() -> dict:
+    """Display-only settings: widths, number format, alignment. Values are untouched."""
+    return {
+        THAI_COLS["year"]: st.column_config.NumberColumn("ปี", format="%d", width=56),
+        THAI_COLS["province"]: st.column_config.TextColumn("จังหวัด", width=124),
+        THAI_COLS["value"]: st.column_config.NumberColumn(
+            f"มูลค่า ({UNIT_LABEL})", format="%,d", width=136,
+            help="ค่าจริงจากไฟล์ต้นฉบับ หน่วยบาทต่อเดือน"),
+        THAI_COLS["soc_eco_class2"]: st.column_config.TextColumn("กลุ่มย่อย", width=345),
+        THAI_COLS["soc_eco_class1"]: st.column_config.TextColumn("กลุ่มหลัก", width=220),
+        THAI_COLS["source_income3"]: st.column_config.TextColumn("หมวดรายได้", width=190),
+    }
+
+
 def render_table(dff: pd.DataFrame, f: dict) -> None:
-    # Value next to the identifying columns so it stays visible without horizontal scroll.
-    cols = ["year", "province", "soc_eco_class2", "value", "source_income3", "soc_eco_class1"]
+    # Value right after the identifying columns so it stays visible on narrow screens.
+    cols = ["year", "province", "value", "soc_eco_class2", "soc_eco_class1", "source_income3"]
     table = dff[cols].copy()
     table["flag"] = dff["attribute"].map(short_attribute)
     table = table.sort_values("value", ascending=False).rename(
@@ -674,10 +688,8 @@ def render_table(dff: pd.DataFrame, f: dict) -> None:
     )
     st.dataframe(
         table, width="stretch", height=420, hide_index=True,
-        column_config={
-            THAI_COLS["year"]: st.column_config.NumberColumn(format="%d", width="small"),
-            THAI_COLS["value"]: st.column_config.NumberColumn(format="localized", width="small"),
-        },
+        column_config={**table_column_config(),
+                       "หมายเหตุ": st.column_config.TextColumn(width=170)},
         column_order=[THAI_COLS[c] for c in cols] + ["หมายเหตุ"],
     )
     with st.expander("รายละเอียดทุกคอลัมน์ รวม source และ attribute ต้นฉบับ"):
@@ -685,7 +697,10 @@ def render_table(dff: pd.DataFrame, f: dict) -> None:
         st.dataframe(
             dff[REQUIRED_COLUMNS].rename(columns=THAI_COLS), width="stretch",
             height=320, hide_index=True,
-            column_config={THAI_COLS["year"]: st.column_config.NumberColumn(format="%d")},
+            column_config={
+                THAI_COLS["year"]: st.column_config.NumberColumn(format="%d"),
+                THAI_COLS["value"]: st.column_config.NumberColumn(format="%,d"),
+            },
         )
 
 
