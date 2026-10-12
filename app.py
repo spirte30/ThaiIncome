@@ -716,7 +716,7 @@ def province_chart(df: pd.DataFrame, f: dict, view: str):
     fig = px.bar(
         show, x="value", y="province", orientation="h",
         color="สถานะ" if highlight else None,
-        color_discrete_map={"จังหวัดที่เลือก": TEAL, "จังหวัดอื่น": TEAL_FADED},
+        color_discrete_map={"จังหวัดที่เลือก": TEAL_DARK, "จังหวัดอื่น": TEAL_FADED},
         custom_data=["rank", "n", "median", "mean", "top_group", "top_value"],
         title=f"{f['income']} รายจังหวัด · พ.ศ. {f['year']}",
         labels={"value": f"{measure} ({UNIT_LABEL})", "province": ""},
@@ -767,16 +767,19 @@ def group_chart(df: pd.DataFrame, f: dict):
             + "<extra></extra>"
         ),
     )
-    # Dim groups outside the group filter instead of hiding them.
-    for trace in fig.data:
-        keep = []
-        for c1, c2 in zip([trace.name] * len(trace.y), trace.y):
-            ok = (f["class1"] in (ALL_GROUPS, c1)) and (f["class2"] in (ALL_GROUPS, c2))
-            keep.append(1.0 if ok else 0.25)
-        trace.marker.opacity = keep
+    # With a group filter, the selected bars turn dark and the rest pale (nothing is
+    # hidden); the shade legend no longer applies then, the main group is in the hover.
+    selecting = f["class1"] != ALL_GROUPS or f["class2"] != ALL_GROUPS
+    if selecting:
+        for trace in fig.data:
+            trace.marker.color = [
+                TEAL_DARK if (f["class1"] in (ALL_GROUPS, trace.name)
+                              and f["class2"] in (ALL_GROUPS, c2)) else TEAL_FADED
+                for c2 in trace.y
+            ]
     fig.update_yaxes(categoryorder="array", categoryarray=agg["soc_eco_class2"].tolist())
     wrap_category_ticks(fig, agg["soc_eco_class2"].tolist())
-    style_fig(fig, 44 * len(agg) + 150, legend=True)
+    style_fig(fig, 44 * len(agg) + 150, legend=not selecting)
     return fig, many
 
 
@@ -801,10 +804,13 @@ def composition_chart(df: pd.DataFrame, f: dict):
     agg = agg.sort_values("value", ascending=True)
     many = agg["n"].max() > 1
     measure = "ค่าเฉลี่ย" if many else "มูลค่า"
+    # Dark only when it singles something out; for total income every leaf is selected.
+    partial = (agg["อยู่ในหมวดที่เลือก"] == "หมวดอื่น").any()
     fig = px.bar(
         agg, x="value", y="source_income3", orientation="h",
         color="อยู่ในหมวดที่เลือก",
-        color_discrete_map={"อยู่ในหมวดที่เลือก": TEAL, "หมวดอื่น": TEAL_FADED},
+        color_discrete_map={"อยู่ในหมวดที่เลือก": TEAL_DARK if partial else TEAL,
+                            "หมวดอื่น": TEAL_FADED},
         custom_data=["parent", "n"],
         title="องค์ประกอบรายได้ 7 หมวดย่อย (ไม่ซ้อนกัน)",
         labels={"value": f"{measure} ({UNIT_LABEL})", "source_income3": ""},
