@@ -118,7 +118,8 @@ STATE_DEFAULTS = {
 }
 
 # ─────────────────────────────────────────────
-# Styles: all CSS lives here. Our own classes use the tokens in :root.
+# Styles: all CSS lives here. Our own classes use the tokens in :root; the page-frame
+# block at the end is the only one that targets Streamlit containers.
 # ─────────────────────────────────────────────
 CSS = f"""
 <style>
@@ -297,6 +298,16 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
 .app-footer .row {{ display:flex; gap:var(--s2); align-items:flex-start; }}
 .app-footer .row .lc-icon {{ margin-top:4px; }}
 .app-footer a {{ color:var(--teal-ink); overflow-wrap:anywhere; }}
+
+/* Page frame: the only rules on Streamlit's own containers (stable data-testids).
+   Caps line length on wide screens and tightens the default padding. */
+[data-testid="stMainBlockContainer"] {{
+  max-width:1200px; padding:4rem var(--s6) var(--s6);
+}}
+@media (max-width: 640px) {{
+  [data-testid="stMainBlockContainer"] {{ padding:3.75rem var(--s4) var(--s5); }}
+  .app-header {{ padding:var(--s5) var(--s4) var(--s4); }}
+}}
 </style>
 """
 
@@ -434,6 +445,7 @@ def render_sidebar(df: pd.DataFrame) -> dict:
         html(f'<div class="side-title">{icon("sliders-horizontal", 18, NAVY)}ตัวกรองข้อมูล</div>')
         st.caption("ทุกตัวกรองมีผลกับ KPI กราฟ และตาราง")
 
+        html('<div class="side-group">ข้อมูลที่แสดง</div>')
         year = st.selectbox("ปี (พ.ศ.)", years, key="f_year")
         province = st.selectbox("จังหวัด", provinces, key="f_province")
         income = st.selectbox(
@@ -441,16 +453,18 @@ def render_sidebar(df: pd.DataFrame) -> dict:
             help="แสดงค่าของหมวดที่เลือกเพียงหมวดเดียว หมวดที่มีคำว่า (ยอดรวม) "
                  "รวมหมวดย่อยที่อยู่ใต้หมวดนั้นไว้แล้ว",
         )
+        html('<div class="side-group">กลุ่มเศรษฐกิจและสังคม</div>')
         class1 = st.selectbox(
-            "กลุ่มเศรษฐกิจและสังคม (หลัก)", class1_opts, key="f_class1",
+            "กลุ่มหลัก", class1_opts, key="f_class1",
             on_change=on_class1_change,
         )
         sub = df if class1 == ALL_GROUPS else df[df["soc_eco_class1"] == class1]
         class2_opts = [ALL_GROUPS] + sorted(sub["soc_eco_class2"].dropna().unique().tolist())
         if st.session_state["f_class2"] not in class2_opts:
             st.session_state["f_class2"] = ALL_GROUPS
-        class2 = st.selectbox("กลุ่มเศรษฐกิจและสังคม (ย่อย)", class2_opts, key="f_class2")
+        class2 = st.selectbox("กลุ่มย่อย", class2_opts, key="f_class2")
 
+        html('<div class="side-group">วิธีคำนวณ</div>')
         stat = st.radio(
             "ค่าสรุปเมื่อมีหลายรายการ", list(STATS), key="f_stat", format_func=STATS.get,
             horizontal=True,
@@ -459,7 +473,7 @@ def render_sidebar(df: pd.DataFrame) -> dict:
         )
 
         st.button("รีเซ็ตตัวกรอง", on_click=reset_filters, args=(years[0],),
-                  width="stretch", type="secondary")
+                  width="stretch", type="secondary", icon=":material/restart_alt:")
 
         st.divider()
         html(f'<div class="side-title">{icon("info", 16, MUTED)}วิธีอ่านค่า</div>')
@@ -920,6 +934,31 @@ def render_filter_chips(f: dict) -> None:
          + "</div>")
 
 
+def render_empty_state(f: dict, latest_year: int) -> None:
+    """Shown instead of KPIs-derived charts when the filters leave no rows."""
+    tips = []
+    if f["province"] != ALL_PROVINCES:
+        tips.append(f'เปลี่ยนจังหวัดเป็น “{ALL_PROVINCES}” (ตอนนี้: {escape(f["province"])})')
+    if f["class2"] != ALL_GROUPS:
+        tips.append(f'เปลี่ยนกลุ่มย่อยเป็น “{ALL_GROUPS}” (ตอนนี้: {escape(f["class2"])})')
+    elif f["class1"] != ALL_GROUPS:
+        tips.append(f'เปลี่ยนกลุ่มหลักเป็น “{ALL_GROUPS}” (ตอนนี้: {escape(f["class1"])})')
+    tips.append(f'ลองเลือกปีอื่น (ตอนนี้: พ.ศ. {f["year"]})')
+    html(
+        '<div class="empty">'
+        f'<div class="e-icon">{icon("search-x", 24, TEAL_INK)}</div>'
+        '<h4>ไม่พบข้อมูลตามตัวกรองที่เลือก</h4>'
+        '<p>ชุดตัวกรองนี้ไม่มีรายการในไฟล์ข้อมูล ลองปรับตัวกรองในแถบด้านข้าง '
+        'หรือกดรีเซ็ตเพื่อกลับไปค่าเริ่มต้น</p>'
+        f'<ul>{"".join(f"<li>{t}</li>" for t in tips)}</ul></div>'
+    )
+    _, mid, _ = st.columns([1, 1, 1])
+    with mid:
+        st.button("รีเซ็ตตัวกรองทั้งหมด", on_click=reset_filters, args=(latest_year,),
+                  key="reset_empty", width="stretch", type="primary",
+                  icon=":material/restart_alt:")
+
+
 def render_footer() -> None:
     html(
         '<div class="app-footer">'
@@ -962,8 +1001,7 @@ def main() -> None:
              'แถวเหล่านี้ไม่ถูกนำไปคำนวณ', "warn")
 
     if dff.empty:
-        note("<b>ไม่พบข้อมูลตามตัวกรองที่เลือก</b><br>"
-             "ลองเปลี่ยนจังหวัดหรือกลุ่มเศรษฐกิจและสังคม หรือกดรีเซ็ตตัวกรองในแถบด้านข้าง", "warn")
+        render_empty_state(f, years[-1])
         render_footer()
         return
 
@@ -999,7 +1037,8 @@ def main() -> None:
                   " (มัธยฐานไม่มีคุณสมบัตินี้)" if many else ""))
 
     # Section 3: year comparison
-    section("calendar-days", "เปรียบเทียบระหว่างปี")
+    section("calendar-days", "เปรียบเทียบระหว่างปี",
+            "ค่าของหมวดที่เลือกในจังหวัดที่เลือก แยกตามกลุ่มย่อย เทียบทุกปีในชุดข้อมูล")
     if f["province"] == ALL_PROVINCES:
         note("เลือกจังหวัดในแถบด้านข้างเพื่อดูการเปรียบเทียบระหว่างปีของจังหวัดนั้น")
     else:
