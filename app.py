@@ -99,10 +99,12 @@ BG = "#F5F7FA"
 SURFACE = "#FFFFFF"
 BORDER = "#DCE3EC"
 GRID = "#E6EBF1"
-DIM = "#C9D3DF"
+# Charts use teal only: one base, darker/lighter steps, and a pale tint for faded marks.
+TEAL_DARK = "#0B6157"
+TEAL_FADED = "#CDE8E3"
+TEAL_SHADES = ["#0B6157", "#0F9D8A", "#4DBDAC", "#93D6CB"]  # dark -> light, one per group
 # Validated categorical palette (light surface): lightness, chroma, CVD, contrast pass.
-CATEGORICAL = ["#2F6BB3", "#0F9D8A", "#C27C0E", "#8A5CC2"]
-YEAR_COLORS = ["#2F6BB3", "#0F9D8A"]
+YEAR_COLORS = ["#7FCDC0", TEAL_DARK]  # earlier year light, latest year dark
 FONT_FAMILY = "Sarabun, 'Noto Sans Thai', sans-serif"
 
 # Summary statistic when several rows (provinces x groups) collapse into one bar/KPI.
@@ -577,7 +579,7 @@ pio.templates["thai_income"] = go.layout.Template(
         font=dict(family=FONT_FAMILY, color=TEXT, size=13),
         paper_bgcolor=SURFACE,
         plot_bgcolor=SURFACE,
-        colorway=[TEAL] + CATEGORICAL,
+        colorway=[TEAL] + TEAL_SHADES,
         margin=dict(l=8, r=16, t=16, b=8),
         separators=".,",
         hoverlabel=dict(bgcolor=SURFACE, bordercolor=BORDER, align="left",
@@ -705,7 +707,7 @@ def province_chart(df: pd.DataFrame, f: dict, view: str):
     fig = px.bar(
         show, x="value", y="province", orientation="h",
         color="สถานะ" if highlight else None,
-        color_discrete_map={"จังหวัดที่เลือก": TEAL, "จังหวัดอื่น": DIM},
+        color_discrete_map={"จังหวัดที่เลือก": TEAL, "จังหวัดอื่น": TEAL_FADED},
         custom_data=["rank", "n", "median", "mean", "top_group", "top_value"],
         title=f"{f['income']} รายจังหวัด · พ.ศ. {f['year']}",
         labels={"value": f"{measure} ({UNIT_LABEL})", "province": ""},
@@ -741,7 +743,7 @@ def group_chart(df: pd.DataFrame, f: dict):
     fig = px.bar(
         agg, x="value", y="soc_eco_class2", orientation="h", color="soc_eco_class1",
         category_orders={"soc_eco_class1": class1_order},
-        color_discrete_sequence=CATEGORICAL,
+        color_discrete_sequence=TEAL_SHADES,
         custom_data=["soc_eco_class1", "n", "median", "mean"],
         title=f"{f['income']} ตามกลุ่มเศรษฐกิจและสังคม",
         labels={"value": f"{measure} ({UNIT_LABEL})", "soc_eco_class2": ""},
@@ -793,7 +795,7 @@ def composition_chart(df: pd.DataFrame, f: dict):
     fig = px.bar(
         agg, x="value", y="source_income3", orientation="h",
         color="อยู่ในหมวดที่เลือก",
-        color_discrete_map={"อยู่ในหมวดที่เลือก": TEAL, "หมวดอื่น": DIM},
+        color_discrete_map={"อยู่ในหมวดที่เลือก": TEAL, "หมวดอื่น": TEAL_FADED},
         custom_data=["parent", "n"],
         title="องค์ประกอบรายได้ 7 หมวดย่อย (ไม่ซ้อนกัน)",
         labels={"value": f"{measure} ({UNIT_LABEL})", "source_income3": ""},
