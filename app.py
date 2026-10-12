@@ -246,10 +246,11 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
 .chart-sub {{ color:var(--muted); font-size:var(--fs-sm); line-height:1.5; margin:0 0 var(--s1); }}
 
 /* Charts with a narrow-screen variant (labels above bars below 640px) */
-.st-key-group_chart_narrow, .st-key-year_chart_narrow {{ display:none; }}
+/* The hidden variant's layout wrapper is hidden too, so it adds no flex gap. */
+[data-testid="stLayoutWrapper"]:has(> [class*="_chart_narrow"]) {{ display:none; }}
 @media (max-width: 640px) {{
-  .st-key-group_chart_wide, .st-key-year_chart_wide {{ display:none; }}
-  .st-key-group_chart_narrow, .st-key-year_chart_narrow {{ display:block; }}
+  [data-testid="stLayoutWrapper"]:has(> [class*="_chart_wide"]) {{ display:none; }}
+  [data-testid="stLayoutWrapper"]:has(> [class*="_chart_narrow"]) {{ display:flex; }}
 }}
 
 /* Sidebar */
