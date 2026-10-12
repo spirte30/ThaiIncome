@@ -257,6 +257,14 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
   [data-testid="stLayoutWrapper"]:has(> [class*="_chart_narrow"]) {{ display:flex; }}
 }}
 
+.share-legend {{
+  display:flex; flex-wrap:wrap; gap:var(--s1) var(--s4); margin:0 0 var(--s2);
+  font-size:var(--fs-sm); color:var(--text-2); font-variant-numeric:tabular-nums;
+}}
+.share-legend .sl-item {{ display:inline-flex; align-items:center; gap:6px; }}
+.share-legend .sl-dot {{ width:12px; height:12px; border-radius:3px; flex-shrink:0; }}
+.share-legend b {{ color:var(--navy); font-weight:600; }}
+
 /* Sidebar */
 .side-title {{
   display:flex; align-items:center; gap:var(--s2); font-weight:600; color:var(--navy);
@@ -835,6 +843,79 @@ def composition_chart(df: pd.DataFrame, f: dict):
     return fig, many
 
 
+SHARE_TITLE = "สัดส่วนองค์ประกอบรายได้ 7 หมวดย่อย (100%)"
+
+
+def share_chart(df: pd.DataFrame, f: dict):
+    """100% bar of the 7 leaf categories, from the same means as composition_chart.
+
+    Shares are of the sum of the 7 means, so they add to exactly 100% (that sum is
+    within ±2 baht of total income). Returns (figure, []) or (None, reasons) when a
+    share would be undefined or misleading: total income 0 or negative, or any
+    category negative (e.g. a net loss).
+    """
+    data = filter_data(df, f, skip=("income",))
+    leaves = (data[data["source_income3"].isin(INCOME_LEAVES)]
+              .groupby("source_income3")["value"].mean())
+    total_rows = data[data["source_income3"] == TOTAL_INCOME]
+    total = total_rows["value"].mean()
+    reasons = []
+    if pd.notna(total) and total == 0:
+        no_sample = total_rows["attribute"].str.startswith(NO_SAMPLE_FLAG, na=False).all()
+        reasons.append("รายได้ทั้งสิ้นเป็น 0" + (" (ไม่มีตัวอย่างในการสำรวจ)" if no_sample else "")
+                       + " จึงคำนวณสัดส่วนไม่ได้")
+    elif pd.notna(total) and total < 0:
+        reasons.append(f"รายได้ทั้งสิ้นติดลบ ({fmt_baht(total)} {UNIT_LABEL})")
+    negative = leaves[leaves < 0]
+    if not negative.empty:
+        parts = ", ".join(f"{escape(n)} {fmt_baht(v)}" for n, v in negative.items())
+        reasons.append(f"มีหมวดที่ติดลบ ({parts} {UNIT_LABEL}) "
+                       "แท่ง 100% แสดงส่วนที่ติดลบไม่ได้")
+    if not reasons and leaves.sum() <= 0:
+        reasons.append("ผลรวม 7 หมวดไม่เป็นบวก จึงคำนวณสัดส่วนไม่ได้")
+    if reasons or leaves.empty:
+        return None, reasons
+
+    leaves = leaves.sort_values(ascending=False)
+    share = leaves / leaves.sum() * 100
+    # Seven teal steps, dark -> light, in the order the segments appear.
+    steps = ["#06403A", "#0B6157", "#0E8174", "#11A08E", "#4DBDAC", "#8FD3C8", "#C4E9E2"]
+    fig = go.Figure()
+    for (name, pct), color in zip(share.items(), steps):
+        fig.add_trace(go.Bar(
+            x=[pct], y=["สัดส่วน"], orientation="h", name=name, meta="share",
+            marker=dict(color=color, line=dict(color=SURFACE, width=1.5)),
+            customdata=[[leaves[name]]], insidetextanchor="middle",
+            hovertemplate=(f"<b>{escape(name)}</b><br>" + "สัดส่วน %{x:.1f}%<br>"
+                           "ค่าเฉลี่ย %{customdata[0]:,.0f} " + UNIT_LABEL + "<extra></extra>"),
+        ))
+    fig.update_layout(title_text=SHARE_TITLE, barmode="stack")
+    fig.update_xaxes(title_text="ร้อยละของผลรวม 7 หมวด")
+    fig.update_yaxes(showticklabels=False)
+    # The legend is HTML below the bar (wraps on phones, shows every share).
+    style_fig(fig, 150, legend=False)
+    # Shares, not baht: override the shared bar labels and headroom.
+    for trace, color in zip(fig.data, steps):
+        trace.update(texttemplate="%{x:.1f}%", textposition="inside",
+                     textangle=0,
+                     textfont=dict(family=FONT_FAMILY, size=12,
+                                   color=SURFACE if steps.index(color) < 4 else TEXT))
+    fig.update_xaxes(range=[0, 100], ticksuffix="%", tickformat=".0f")
+    fig.update_layout(uniformtext=dict(minsize=10, mode="hide"), bargap=0.3,
+                      margin=dict(l=8, r=16, t=8, b=8))
+    return fig, []
+
+
+def share_legend(fig) -> str:
+    """HTML legend for the share bar: swatch, category and its share, in bar order."""
+    items = "".join(
+        f'<span class="sl-item"><span class="sl-dot" style="background:{t.marker.color}"></span>'
+        f'{escape(t.name)} <b>{t.x[0]:.1f}%</b></span>'
+        for t in fig.data
+    )
+    return f'<div class="share-legend">{items}</div>'
+
+
 def year_chart(df: pd.DataFrame, f: dict):
     """Selected province & category across years, by sub-group, as a dumbbell plot.
 
@@ -1145,6 +1226,18 @@ def main() -> None:
     st.caption("แถบสีเขียวคือหมวดย่อยที่อยู่ภายใต้หมวดรายได้ที่เลือก"
                + (" · ใช้ค่าเฉลี่ยเสมอ เพราะค่าเฉลี่ยของหมวดย่อยรวมกันได้เท่ากับยอดรวม"
                   " (มัธยฐานไม่มีคุณสมบัตินี้)" if many else ""))
+    fig, reasons = share_chart(df, f)
+    if fig is not None:
+        show_chart(fig)
+        html(share_legend(fig))
+        st.caption("สัดส่วนคำนวณจากค่าเฉลี่ยชุดเดียวกับกราฟด้านบน เทียบกับผลรวมของ 7 หมวด "
+                   "(ผลรวมนี้ต่างจากรายได้ทั้งสิ้นไม่เกิน ±2 บาทจากการปัดเศษ) "
+                   "ตัวเลขในแท่งที่แคบเกินจะซ่อนไว้ ชี้ที่แท่งเพื่อดูค่า")
+    elif reasons:
+        html(f'<div class="chart-title">{escape(SHARE_TITLE)}</div>')
+        note("<b>ไม่แสดงสัดส่วน 100% สำหรับตัวกรองนี้</b><br>"
+             + "<br>".join(f"• {r}" for r in reasons)
+             + "<br>ค่าเป็นบาทของแต่ละหมวดยังดูได้จากกราฟด้านบน", "warn")
 
     # Section 3: year comparison
     section("calendar-days", "เปรียบเทียบระหว่างปี",
