@@ -79,8 +79,11 @@ THAI_COLS = {
     "source": "แหล่งข้อมูล (source)",
 }
 # Short labels for the attribute flags found in the data (original text kept in details).
+# Flag (start of `attribute`) on values that are 0 because the survey had no sample
+# for that cell. Only this flag marks "no sample"; a plain 0 can also be a rounded value.
+NO_SAMPLE_FLAG = "ศูนย์ยกกำลังดับเบิลยู"
 ATTRIBUTE_SHORT = {
-    "ศูนย์ยกกำลังดับเบิลยู": "0 จากการสำรวจตัวอย่าง",
+    NO_SAMPLE_FLAG: "0 จากการสำรวจตัวอย่าง",
     "ลบศูนย์ยกกำลังอาร์ดี": "ปัดเศษเป็น 0 (ติดลบ)",
     "ศูนย์ยกกำลังอาร์ดี": "ปัดเศษเป็น 0",
 }
@@ -834,46 +837,79 @@ def composition_chart(df: pd.DataFrame, f: dict):
 def year_chart(df: pd.DataFrame, f: dict):
     """Selected province & category across years, by sub-group, as a dumbbell plot.
 
-    One dot per year (same values as before), joined by a line coloured by direction
-    (increase / decrease from the first to the latest year). Sorted by the latest year.
+    One dot per year (same values as before), joined by a line: teal for an increase,
+    orange for a decrease (colour-blind safe). A value carrying the no-sample flag is a
+    hollow dot and its line is grey and dashed, since that 0 is not a fall in income.
+    Rows are sorted by the latest year and never dropped.
     """
     data = filter_data(df, f, skip=("year",))
-    agg = (data.groupby(["year", "soc_eco_class2"], as_index=False)["value"].mean())
-    if agg.empty:
+    if data.empty:
         return None
+    data = data.assign(no_sample=data["attribute"].str.startswith(NO_SAMPLE_FLAG, na=False))
+    agg = (data.groupby(["year", "soc_eco_class2"], as_index=False)
+               .agg(value=("value", "mean"), no_sample=("no_sample", "all")))
     years = sorted(agg["year"].unique())
     first, last = years[0], years[-1]
     order = (agg[agg["year"] == last]
              .sort_values("value", ascending=False)["soc_eco_class2"].tolist())
     wide = agg.pivot(index="soc_eco_class2", columns="year", values="value").reindex(order)
+    flag = (agg.pivot(index="soc_eco_class2", columns="year", values="no_sample")
+               .reindex(order).fillna(False).astype(bool))
     change = wide[last] - wide[first]
+    no_sample_row = flag[first] | flag[last]
 
     fig = go.Figure()
-    for name, sign, color in (("เพิ่มขึ้น", 1, POSITIVE), ("ลดลง", -1, NEGATIVE)):
-        rows = wide[(change * sign) > 0]
+    lines = (
+        ("เพิ่มขึ้น", ~no_sample_row & (change > 0), dict(color=TEAL, width=3)),
+        ("ลดลง", ~no_sample_row & (change < 0), dict(color=ACCENT, width=3)),
+        ("ไม่มีตัวอย่าง", no_sample_row, dict(color=MUTED, width=2, dash="dot")),
+    )
+    for name, mask, line in lines:
+        rows = wide[mask]
         if rows.empty or first == last:
             continue
         xs, ys = [], []
         for group, row in rows.iterrows():
             xs += [row[first], row[last], None]
             ys += [group, group, None]
-        fig.add_trace(go.Scatter(
-            x=xs, y=ys, mode="lines", name=f"{name} (พ.ศ. {first} → {last})", meta="connector",
-            line=dict(color=color, width=3), hoverinfo="skip",
-        ))
-    diff_cd = pd.DataFrame({"a": wide[first], "b": wide[last], "d": change})
+        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", name=name, meta="connector",
+                                 line=line, hoverinfo="skip"))
+
+    def no_sample_note(group):
+        if flag.at[group, first] and flag.at[group, last]:
+            return "ไม่มีตัวอย่างในการสำรวจทั้งสองปี"
+        # The flagged year is the 0; say which apparent change it is not.
+        return ("ไม่มีตัวอย่างในการสำรวจ "
+                + ("ไม่ใช่รายได้ลดลง" if flag.at[group, last] else "ไม่ใช่รายได้เพิ่มขึ้น"))
+
+    def year_line(year, group):
+        value = wide.at[group, year]
+        text = f"พ.ศ. {year}: {'—' if pd.isna(value) else fmt_baht(value)}"
+        return text + (" (ไม่มีตัวอย่างในการสำรวจ)" if flag.at[group, year] else "")
+
+    def last_line(group):
+        if no_sample_row[group]:
+            return f"<i>{no_sample_note(group)}</i>"
+        if pd.isna(change[group]):
+            return "ผลต่าง: —"
+        return f"ผลต่าง: {change[group]:+,.0f} {UNIT_LABEL}"
+
     for year, color in zip(years, YEAR_COLORS if len(years) == 2 else [TEAL] * len(years)):
-        col = agg[agg["year"] == year].set_index("soc_eco_class2").reindex(order).dropna()
+        col = agg[agg["year"] == year].set_index("soc_eco_class2").reindex(order).dropna(subset=["value"])
+        hollow = col["no_sample"].astype(bool)
         fig.add_trace(go.Scatter(
             x=col["value"], y=col.index, mode="markers", name=f"พ.ศ. {year}",
-            marker=dict(color=color, size=12, line=dict(color=SURFACE, width=1.5)),
-            customdata=diff_cd.loc[col.index].to_numpy(),
-            hovertemplate=(
-                "<b>%{y}</b><br>"
-                f"พ.ศ. {first}: " + "%{customdata[0]:,.0f}<br>"
-                f"พ.ศ. {last}: " + "%{customdata[1]:,.0f}<br>"
-                "ผลต่าง: %{customdata[2]:+,.0f} " + UNIT_LABEL + "<extra></extra>"
+            # Open symbols draw their outline in marker.color, so both kinds use the year
+            # colour; filled dots get a white ring, hollow ones a thicker stroke.
+            marker=dict(
+                color=color, size=12,
+                symbol=["circle-open" if h else "circle" for h in hollow],
+                line=dict(color=SURFACE, width=[2.5 if h else 1.5 for h in hollow]),
             ),
+            customdata=[[escape(year_line(first, g)), escape(year_line(last, g)),
+                         last_line(g)] for g in col.index],
+            hovertemplate=("<b>%{y}</b><br>%{customdata[0]}<br>%{customdata[1]}"
+                           "<br>%{customdata[2]}<extra></extra>"),
         ))
     fig.update_layout(title_text=f"{f['income']} · {f['province']} เปรียบเทียบระหว่างปี")
     fig.update_xaxes(title_text=f"มูลค่า ({UNIT_LABEL})")
