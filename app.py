@@ -605,6 +605,15 @@ def style_fig(fig, height: int, *, legend: bool = False):
     fig.update_layout(template="thai_income")
     fig.update_layout(pio.templates["thai_income"].layout.to_plotly_json())
     fig.update_layout(height=height, showlegend=legend, legend_title_text="")
+    # Value at the end of every bar, thousands-separated like the hover.
+    fig.update_traces(selector=dict(type="bar"), texttemplate="%{x:,.0f}",
+                      textposition="outside", cliponaxis=False,
+                      textfont=dict(family=FONT_FAMILY, size=11, color=TEXT))
+    # Headroom so the outside labels fit even on a phone-width plot.
+    xs = [v for t in fig.data if t.type == "bar" for v in t.x if pd.notna(v)]
+    if xs:
+        lo, hi = min(min(xs), 0), max(max(xs), 0)
+        fig.update_xaxes(range=[lo * 1.18, hi * 1.18 if hi else 1])
     return fig
 
 
