@@ -178,6 +178,7 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
   display:flex; flex-wrap:wrap; gap:var(--s2); margin:0 0 var(--s4); align-items:center;
 }}
 .chips .lbl {{ color:var(--muted); font-size:var(--fs-sm); margin-right:var(--s1); }}
+.chip .c-note {{ color:var(--muted); }}
 .chip {{
   display:inline-flex; align-items:center; gap:6px; background:var(--surface);
   border:1px solid var(--border); border-radius:var(--r-pill); padding:var(--s1) var(--s3);
@@ -187,11 +188,10 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
 
 /* KPI cards: label -> value + unit -> sub. Rows share one subgrid so labels, values
    and subs line up across a row and every card in a row has the same height.
-   Phones (content < 600px) get 2 columns, then 3+2, then 5 from a 1440px viewport. */
+   Phones (content < 600px) get one column; otherwise all three sit in one row. */
 .kpi-wrap {{ container-type:inline-size; margin:0 0 var(--s2); }}
 .kpi-grid {{
-  display:grid; gap:var(--s3); grid-template-columns:repeat(2, minmax(0, 1fr));
-  grid-auto-rows:auto;
+  display:grid; gap:var(--s3); grid-template-columns:minmax(0, 1fr); grid-auto-rows:auto;
 }}
 .kpi {{
   display:grid; grid-row:span 3; grid-template-rows:subgrid; row-gap:6px;
@@ -199,16 +199,8 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md);
   padding:var(--s4); min-width:0; box-shadow:var(--shadow-sm);
 }}
-.kpi.wide {{ grid-column:span 2; }}
 @container (min-width: 600px) {{
-  .kpi-grid {{ grid-template-columns:repeat(6, minmax(0, 1fr)); }}
-  .kpi, .kpi.wide {{ grid-column:span 2; }}
-  .kpi:nth-child(n+4) {{ grid-column:span 3; }}
-}}
-/* One row of five only on wide viewports; below that 3+2 keeps the numbers large. */
-@media (min-width: 1440px) {{
-  .kpi-grid {{ grid-template-columns:repeat(5, minmax(0, 1fr)); }}
-  .kpi, .kpi.wide, .kpi:nth-child(n+4) {{ grid-column:auto; }}
+  .kpi-grid {{ grid-template-columns:minmax(0, .8fr) minmax(0, 1.1fr) minmax(0, 1.1fr); }}
 }}
 .kpi .k-label {{
   display:flex; align-items:flex-start; gap:6px; color:var(--muted);
@@ -220,7 +212,6 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
   color:var(--navy); font-weight:700; line-height:1.25;
   font-size:clamp(1.2rem, 13.5cqi, var(--fs-xl)); font-variant-numeric:tabular-nums;
 }}
-.kpi .k-value.text {{ white-space:normal; overflow-wrap:anywhere; }}
 .kpi .k-value .unit {{ font-size:var(--fs-sm); font-weight:500; color:var(--muted); }}
 .kpi .k-sub {{
   color:var(--muted); font-size:var(--fs-sm); line-height:1.5; overflow-wrap:anywhere;
@@ -535,25 +526,20 @@ def compute_kpis(dff: pd.DataFrame, f: dict, years: list[int]) -> dict:
 
 
 def kpi_card(icon_name: str, label: str, value: str, sub: str, *, unit: str | None = None,
-             accent: bool = False, wide: bool = False, text_value: bool = False) -> str:
+             accent: bool = False) -> str:
     """One KPI card. `value` and `sub` must be trusted or pre-escaped."""
-    classes = "kpi" + (" accent" if accent else "") + (" wide" if wide else "")
+    classes = "kpi" + (" accent" if accent else "")
     unit_html = f'<span class="unit">{escape(unit)}</span>' if unit else ""
     return (
         f'<div class="{classes}">'
         f'<div class="k-label">{icon(icon_name, 15, MUTED)}<span>{escape(label)}</span></div>'
-        f'<div class="k-value{" text" if text_value else ""}"><span>{value}</span>{unit_html}</div>'
+        f'<div class="k-value"><span>{value}</span>{unit_html}</div>'
         f'<div class="k-sub">{sub}</div></div>'
     )
 
 
 def render_kpis(k: dict, f: dict) -> None:
-    other = ", ".join(str(y) for y in k["other_years"])
-    if f["province"] != ALL_PROVINCES:
-        prov = dict(value=escape(f["province"]), sub="จังหวัดที่เลือก", text_value=True)
-    else:
-        prov = dict(value=f'{k["n_provinces"]}', unit="จังหวัด", sub="จังหวัดที่อยู่ในผลลัพธ์")
-
+    """Three cards; the selected year and province are in the filter chips above."""
     if k["value"] is None:
         val = dict(value="—", sub="ไม่มีค่าตัวเลข")
     elif k["n_records"] == 1:
@@ -569,17 +555,12 @@ def render_kpis(k: dict, f: dict) -> None:
     else:
         top = dict(value="—")
     cards = [
-        kpi_card("calendar-days", "ปีที่เลือก", f'พ.ศ. {k["year"]}',
-                 f"ปีอื่นในชุดข้อมูล: {other}" if other else "ปีเดียวในชุดข้อมูล"),
-        kpi_card("map-pin", "จังหวัด", prov.pop("value"), prov.pop("sub"), **prov),
         kpi_card("list-checks", "รายการที่ผ่านตัวกรอง", f'{k["n_records"]:,}',
-                 f'1 รายการ = จังหวัด × กลุ่มย่อย ({k["n_groups"]} กลุ่มย่อย)', wide=True),
+                 f'1 รายการ = จังหวัด × กลุ่มย่อย ({k["n_groups"]} กลุ่มย่อย)'),
         kpi_card("wallet", "รายได้หมวดที่เลือก", val["value"],
-                 f'{escape(f["income"])}<br>{val["sub"]}', unit=val.get("unit"),
-                 accent=True, wide=True),
+                 f'{escape(f["income"])}<br>{val["sub"]}', unit=val.get("unit"), accent=True),
         kpi_card("trophy", "ค่าสูงสุดในผลลัพธ์", top["value"],
-                 escape(k["max_where"]) if k["max_where"] else "—", unit=top.get("unit"),
-                 wide=True),
+                 escape(k["max_where"]) if k["max_where"] else "—", unit=top.get("unit")),
     ]
     html(f'<div class="kpi-wrap"><div class="kpi-grid">{"".join(cards)}</div></div>')
 
@@ -960,16 +941,23 @@ def render_header(df: pd.DataFrame | None) -> None:
     )
 
 
-def render_filter_chips(f: dict) -> None:
+def render_filter_chips(f: dict, k: dict) -> None:
+    """Active filters. Also carries what the former year/province KPI cards said."""
     group = f["class2"] if f["class2"] != ALL_GROUPS else f["class1"]
+    other = ", ".join(str(y) for y in k["other_years"])
+    year_note = f"ปีอื่นในชุดข้อมูล: {other}" if other else "ปีเดียวในชุดข้อมูล"
+    prov_note = (f'{k["n_provinces"]} จังหวัดในผลลัพธ์' if f["province"] == ALL_PROVINCES
+                 else "จังหวัดที่เลือก")
     chips = [
-        ("calendar-days", f"พ.ศ. {f['year']}"),
-        ("map-pin", f["province"]),
-        ("wallet", f["income"]),
-        ("users", group),
+        ("calendar-days", f"พ.ศ. {f['year']}", year_note),
+        ("map-pin", f["province"], prov_note),
+        ("wallet", f["income"], None),
+        ("users", group, None),
     ]
     html('<div class="chips"><span class="lbl">ตัวกรองปัจจุบัน</span>'
-         + "".join(f'<span class="chip">{icon(n, 14, TEAL)}{escape(t)}</span>' for n, t in chips)
+         + "".join(f'<span class="chip">{icon(n, 14, TEAL)}{escape(t)}'
+                   + (f'<span class="c-note">· {escape(note)}</span>' if note else "")
+                   + "</span>" for n, t, note in chips)
          + "</div>")
 
 
@@ -1032,8 +1020,9 @@ def main() -> None:
     years = sorted(df["year"].unique().tolist())
     dff = filter_data(df, f)
 
-    render_filter_chips(f)
-    render_kpis(compute_kpis(dff, f, years), f)
+    kpis = compute_kpis(dff, f, years)
+    render_filter_chips(f, kpis)
+    render_kpis(kpis, f)
     if issues["non_numeric_value"] or issues["missing_value"]:
         note(f'พบค่า value ที่ว่างหรือแปลงเป็นตัวเลขไม่ได้ '
              f'{issues["missing_value"] + issues["non_numeric_value"]:,} แถว '
