@@ -147,28 +147,48 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
   font-size:.85rem; color:{TEXT};
 }}
 
+/* KPI cards: label -> value + unit -> sub. Rows share one subgrid so labels, values
+   and subs line up across a row and every card in a row has the same height.
+   Column count follows the width of the content area, not the viewport. */
+.kpi-wrap {{ container-type:inline-size; margin:0 0 8px; }}
 .kpi-grid {{
-  display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 170px), 1fr));
-  gap:14px; margin:0 0 8px;
+  display:grid; gap:12px; grid-template-columns:repeat(2, minmax(0, 1fr));
+  grid-auto-rows:auto;
 }}
 .kpi {{
+  display:grid; grid-row:span 3; grid-template-rows:subgrid; row-gap:6px;
+  align-content:start; container-type:inline-size;
   background:#FFFFFF; border:1px solid #E1E7EF; border-radius:12px;
-  padding:16px 18px; min-width:0;
+  padding:16px; min-width:0;
+}}
+.kpi.wide {{ grid-column:span 2; }}
+@container (min-width: 600px) {{
+  .kpi-grid {{ grid-template-columns:repeat(6, minmax(0, 1fr)); }}
+  .kpi, .kpi.wide {{ grid-column:span 2; }}
+  .kpi:nth-child(n+4) {{ grid-column:span 3; }}
+}}
+@container (min-width: 900px) {{
+  .kpi-grid {{ grid-template-columns:repeat(5, minmax(0, 1fr)); }}
+  .kpi, .kpi.wide, .kpi:nth-child(n+4) {{ grid-column:auto; }}
 }}
 .kpi .k-label {{
-  display:flex; align-items:center; gap:7px; color:{MUTED};
-  font-size:.86rem; font-weight:500;
+  display:flex; align-items:flex-start; gap:6px; color:{MUTED};
+  font-size:.86rem; font-weight:500; line-height:1.4;
 }}
+.kpi .k-label .lc-icon {{ margin-top:2px; }}
 .kpi .k-value {{
-  color:{NAVY}; font-size:1.55rem; font-weight:700; line-height:1.3; margin-top:6px;
-  overflow-wrap:anywhere;
+  display:flex; align-items:baseline; gap:6px; white-space:nowrap;
+  color:{NAVY}; font-weight:700; line-height:1.25;
+  font-size:clamp(1.2rem, 13.5cqi, 1.6rem); font-variant-numeric:tabular-nums;
 }}
-.kpi .k-value small {{
-  font-size:.85rem; font-weight:500; color:{MUTED}; margin-left:4px;
-  white-space:nowrap; display:inline-block;
+.kpi .k-value.text {{ white-space:normal; overflow-wrap:anywhere; }}
+.kpi .k-value .unit {{ font-size:.8rem; font-weight:500; color:{MUTED}; }}
+.kpi .k-sub {{
+  color:{MUTED}; font-size:.8rem; line-height:1.5; overflow-wrap:anywhere;
+  font-variant-numeric:tabular-nums;
 }}
-.kpi .k-sub {{ color:{MUTED}; font-size:.8rem; margin-top:4px; line-height:1.45; }}
-.kpi.accent {{ border-top:3px solid {TEAL}; }}
+.kpi .k-sub .nw {{ white-space:nowrap; }}
+.kpi.accent {{ border-top:3px solid {TEAL}; padding-top:14px; }}
 
 .section {{
   display:flex; align-items:center; gap:10px; margin:28px 0 2px;
@@ -409,11 +429,15 @@ def compute_kpis(dff: pd.DataFrame, f: dict, years: list[int]) -> dict:
     return k
 
 
-def kpi_card(icon_name: str, label: str, value: str, sub: str, accent: bool = False) -> str:
+def kpi_card(icon_name: str, label: str, value: str, sub: str, *, unit: str | None = None,
+             accent: bool = False, wide: bool = False, text_value: bool = False) -> str:
+    """One KPI card. `value` and `sub` must be trusted or pre-escaped."""
+    classes = "kpi" + (" accent" if accent else "") + (" wide" if wide else "")
+    unit_html = f'<span class="unit">{escape(unit)}</span>' if unit else ""
     return (
-        f'<div class="kpi{" accent" if accent else ""}">'
-        f'<div class="k-label">{icon(icon_name, 15, MUTED)}{escape(label)}</div>'
-        f'<div class="k-value">{value}</div>'
+        f'<div class="{classes}">'
+        f'<div class="k-label">{icon(icon_name, 15, MUTED)}<span>{escape(label)}</span></div>'
+        f'<div class="k-value{" text" if text_value else ""}"><span>{value}</span>{unit_html}</div>'
         f'<div class="k-sub">{sub}</div></div>'
     )
 
@@ -421,35 +445,38 @@ def kpi_card(icon_name: str, label: str, value: str, sub: str, accent: bool = Fa
 def render_kpis(k: dict, f: dict) -> None:
     other = ", ".join(str(y) for y in k["other_years"])
     if f["province"] != ALL_PROVINCES:
-        prov_value, prov_sub = escape(f["province"]), "จังหวัดที่เลือก"
+        prov = dict(value=escape(f["province"]), sub="จังหวัดที่เลือก", text_value=True)
     else:
-        prov_value, prov_sub = f'{k["n_provinces"]}<small>จังหวัด</small>', "จังหวัดที่อยู่ในผลลัพธ์"
+        prov = dict(value=f'{k["n_provinces"]}', unit="จังหวัด", sub="จังหวัดที่อยู่ในผลลัพธ์")
 
     if k["value"] is None:
-        val_html, val_sub = "—", "ไม่มีค่าตัวเลข"
+        val = dict(value="—", sub="ไม่มีค่าตัวเลข")
     elif k["n_records"] == 1:
-        val_html = f'{fmt_baht(k["value"])}<small>{UNIT_LABEL}</small>'
-        val_sub = "ค่าจริงของรายการที่เลือก"
+        val = dict(value=fmt_baht(k["value"]), unit=UNIT_LABEL, sub="ค่าจริงของรายการที่เลือก")
     else:
-        val_html = f'{fmt_baht(k["value"])}<small>{UNIT_LABEL}</small>'
         other_stat = "mean" if f["stat"] == "median" else "median"
-        val_sub = (f'{STATS[f["stat"]]}ของ {k["n_records"]:,} รายการ · '
-                   f'{STATS[other_stat]} {fmt_baht(k[other_stat])}')
+        val = dict(value=fmt_baht(k["value"]), unit=UNIT_LABEL,
+                   sub=(f'<span class="nw">{STATS[f["stat"]]}ของ {k["n_records"]:,} รายการ</span> · '
+                        f'<span class="nw">{STATS[other_stat]} {fmt_baht(k[other_stat])}</span>'))
 
-    max_html = (f'{fmt_baht(k["max_value"])}<small>{UNIT_LABEL}</small>'
-                if k["max_value"] is not None else "—")
+    if k["max_value"] is not None:
+        top = dict(value=fmt_baht(k["max_value"]), unit=UNIT_LABEL)
+    else:
+        top = dict(value="—")
     cards = [
         kpi_card("calendar-days", "ปีที่เลือก", f'พ.ศ. {k["year"]}',
                  f"ปีอื่นในชุดข้อมูล: {other}" if other else "ปีเดียวในชุดข้อมูล"),
-        kpi_card("map-pin", "จังหวัด", prov_value, prov_sub),
+        kpi_card("map-pin", "จังหวัด", prov.pop("value"), prov.pop("sub"), **prov),
         kpi_card("list-checks", "รายการที่ผ่านตัวกรอง", f'{k["n_records"]:,}',
-                 f'1 รายการ = จังหวัด × กลุ่มย่อย ({k["n_groups"]} กลุ่มย่อย)'),
-        kpi_card("wallet", "รายได้หมวดที่เลือก", val_html,
-                 f'{escape(f["income"])}<br>{val_sub}', accent=True),
-        kpi_card("trophy", "ค่าสูงสุดในผลลัพธ์", max_html,
-                 escape(k["max_where"]) if k["max_where"] else "—"),
+                 f'1 รายการ = จังหวัด × กลุ่มย่อย ({k["n_groups"]} กลุ่มย่อย)', wide=True),
+        kpi_card("wallet", "รายได้หมวดที่เลือก", val["value"],
+                 f'{escape(f["income"])}<br>{val["sub"]}', unit=val.get("unit"),
+                 accent=True, wide=True),
+        kpi_card("trophy", "ค่าสูงสุดในผลลัพธ์", top["value"],
+                 escape(k["max_where"]) if k["max_where"] else "—", unit=top.get("unit"),
+                 wide=True),
     ]
-    html(f'<div class="kpi-grid">{"".join(cards)}</div>')
+    html(f'<div class="kpi-wrap"><div class="kpi-grid">{"".join(cards)}</div></div>')
 
 
 # ─────────────────────────────────────────────
