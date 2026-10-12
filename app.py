@@ -91,7 +91,12 @@ CATEGORICAL = ["#2F6BB3", "#0F9D8A", "#C27C0E", "#8A5CC2"]
 YEAR_COLORS = ["#2F6BB3", "#0F9D8A"]
 FONT_FAMILY = "Sarabun, 'Noto Sans Thai', sans-serif"
 
+# Summary statistic when several rows (provinces x groups) collapse into one bar/KPI.
+# Median is the default: one extreme sub-group can otherwise dominate a province mean.
+STATS = {"median": "มัธยฐาน", "mean": "ค่าเฉลี่ย"}
+
 STATE_DEFAULTS = {
+    "f_stat": "median",
     "f_province": ALL_PROVINCES,
     "f_income": TOTAL_INCOME,
     "f_class1": ALL_GROUPS,
@@ -153,7 +158,10 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
   color:{NAVY}; font-size:1.55rem; font-weight:700; line-height:1.3; margin-top:6px;
   overflow-wrap:anywhere;
 }}
-.kpi .k-value small {{ font-size:.85rem; font-weight:500; color:{MUTED}; margin-left:4px; }}
+.kpi .k-value small {{
+  font-size:.85rem; font-weight:500; color:{MUTED}; margin-left:4px;
+  white-space:nowrap; display:inline-block;
+}}
 .kpi .k-sub {{ color:{MUTED}; font-size:.8rem; margin-top:4px; line-height:1.45; }}
 .kpi.accent {{ border-top:3px solid {TEAL}; }}
 
@@ -335,6 +343,13 @@ def render_sidebar(df: pd.DataFrame) -> dict:
             st.session_state["f_class2"] = ALL_GROUPS
         class2 = st.selectbox("กลุ่มเศรษฐกิจและสังคม (ย่อย)", class2_opts, key="f_class2")
 
+        stat = st.radio(
+            "ค่าสรุปเมื่อมีหลายรายการ", list(STATS), key="f_stat", format_func=STATS.get,
+            horizontal=True,
+            help="มัธยฐานไม่ไวต่อกลุ่มที่มีค่าสูงหรือต่ำผิดปกติ ค่าเฉลี่ยไวต่อค่าโดด "
+                 "ทั้งสองแบบไม่ถ่วงน้ำหนักด้วยจำนวนครัวเรือน เพราะไฟล์ไม่มีข้อมูลนี้",
+        )
+
         st.button("รีเซ็ตตัวกรอง", on_click=reset_filters, args=(years[0],),
                   width="stretch", type="secondary")
 
@@ -343,11 +358,12 @@ def render_sidebar(df: pd.DataFrame) -> dict:
         st.caption(
             "ข้อมูลมีทั้งหมวดยอดรวมและหมวดย่อยอยู่ในไฟล์เดียวกัน แดชบอร์ดจึงแสดงค่าของ"
             "หมวดที่เลือกเท่านั้น ไม่นำหลายหมวดมารวมกัน เมื่อผลลัพธ์มีหลายรายการ "
-            "ค่าที่แสดงคือค่าเฉลี่ยอย่างง่ายของรายการ (ไม่ถ่วงน้ำหนักด้วยจำนวนครัวเรือน "
-            "เพราะไฟล์ไม่มีข้อมูลจำนวนครัวเรือน)"
+            "ค่าที่แสดงคือมัธยฐานหรือค่าเฉลี่ยของรายการตามที่เลือก ไม่ใช่ค่าของประชากรทั้งจังหวัด "
+            "เพราะไฟล์ไม่มีจำนวนครัวเรือนสำหรับถ่วงน้ำหนัก"
         )
 
-    return dict(year=year, province=province, income=income, class1=class1, class2=class2)
+    return dict(year=year, province=province, income=income, class1=class1, class2=class2,
+                stat=stat)
 
 
 def filter_data(df: pd.DataFrame, f: dict, *, skip: tuple[str, ...] = ()) -> pd.DataFrame:
@@ -380,7 +396,8 @@ def compute_kpis(dff: pd.DataFrame, f: dict, years: list[int]) -> dict:
         value=None, max_value=None, max_where=None,
     )
     if not vals.empty:
-        k["value"] = float(vals.iloc[0]) if len(vals) == 1 else float(vals.mean())
+        k["value"] = float(vals.iloc[0]) if len(vals) == 1 else float(vals.agg(f["stat"]))
+        k["mean"], k["median"] = float(vals.mean()), float(vals.median())
         top = dff.loc[vals.idxmax()]
         k["max_value"] = float(top["value"])
         k["max_where"] = f'{top["province"]} · {top["soc_eco_class2"]}'
@@ -410,7 +427,9 @@ def render_kpis(k: dict, f: dict) -> None:
         val_sub = "ค่าจริงของรายการที่เลือก"
     else:
         val_html = f'{fmt_baht(k["value"])}<small>{UNIT_LABEL}</small>'
-        val_sub = f'ค่าเฉลี่ยอย่างง่ายของ {k["n_records"]:,} รายการ (ไม่ถ่วงน้ำหนัก)'
+        other_stat = "mean" if f["stat"] == "median" else "median"
+        val_sub = (f'{STATS[f["stat"]]}ของ {k["n_records"]:,} รายการ · '
+                   f'{STATS[other_stat]} {fmt_baht(k[other_stat])}')
 
     max_html = (f'{fmt_baht(k["max_value"])}<small>{UNIT_LABEL}</small>'
                 if k["max_value"] is not None else "—")
@@ -461,9 +480,12 @@ def province_chart(df: pd.DataFrame, f: dict, view: str):
     """Value of the selected category by province (all provinces; selection highlighted)."""
     data = filter_data(df, f, skip=("province",))
     agg = (data.groupby("province", as_index=False)
-               .agg(value=("value", "mean"), n=("value", "size"))
-               .sort_values("value", ascending=False)
-               .reset_index(drop=True))
+               .agg(median=("value", "median"), mean=("value", "mean"), n=("value", "size")))
+    top = data.loc[data.groupby("province")["value"].idxmax(), ["province", "soc_eco_class2", "value"]]
+    agg = agg.merge(top.rename(columns={"soc_eco_class2": "top_group", "value": "top_value"}),
+                    on="province")
+    agg["value"] = agg[f["stat"]]
+    agg = agg.sort_values("value", ascending=False).reset_index(drop=True)
     agg["rank"] = agg.index + 1
     if view == "top":
         show = agg.head(15)
@@ -478,13 +500,13 @@ def province_chart(df: pd.DataFrame, f: dict, view: str):
     show["สถานะ"] = (show["province"] == selected).map({True: "จังหวัดที่เลือก", False: "จังหวัดอื่น"})
 
     many = agg["n"].max() > 1
-    measure = "ค่าเฉลี่ยของกลุ่มย่อย" if many else "มูลค่า"
+    measure = f'{STATS[f["stat"]]}ของกลุ่มย่อย' if many else "มูลค่า"
     highlight = selected != ALL_PROVINCES
     fig = px.bar(
         show, x="value", y="province", orientation="h",
         color="สถานะ" if highlight else None,
         color_discrete_map={"จังหวัดที่เลือก": TEAL, "จังหวัดอื่น": DIM},
-        custom_data=["rank", "n"],
+        custom_data=["rank", "n", "median", "mean", "top_group", "top_value"],
         title=f"{f['income']} รายจังหวัด · พ.ศ. {f['year']}",
         labels={"value": f"{measure} ({UNIT_LABEL})", "province": ""},
     )
@@ -495,7 +517,9 @@ def province_chart(df: pd.DataFrame, f: dict, view: str):
         hovertemplate=(
             "<b>%{y}</b><br>" + measure + ": %{x:,.0f} " + UNIT_LABEL
             + "<br>อันดับ %{customdata[0]} จาก " + str(len(agg)) + " จังหวัด"
-            + ("<br>เฉลี่ยจาก %{customdata[1]} กลุ่มย่อย" if many else "")
+            + ("<br><br>จาก %{customdata[1]} กลุ่มย่อย"
+               "<br>มัธยฐาน %{customdata[2]:,.0f} · ค่าเฉลี่ย %{customdata[3]:,.0f}"
+               "<br>สูงสุด: %{customdata[4]} (%{customdata[5]:,.0f})" if many else "")
             + "<extra></extra>"
         ),
     )
@@ -509,15 +533,17 @@ def group_chart(df: pd.DataFrame, f: dict):
     """Value of the selected category by socio-economic sub-group (selection highlighted)."""
     data = filter_data(df, f, skip=("class1", "class2"))
     agg = (data.groupby(["soc_eco_class1", "soc_eco_class2"], as_index=False)
-               .agg(value=("value", "mean"), n=("value", "size"))
-               .sort_values("value", ascending=True))
+               .agg(median=("value", "median"), mean=("value", "mean"), n=("value", "size")))
+    agg["value"] = agg[f["stat"]]
+    agg = agg.sort_values("value", ascending=True)
     class1_order = sorted(df["soc_eco_class1"].dropna().unique())
     many = agg["n"].max() > 1
-    measure = "ค่าเฉลี่ยของจังหวัด" if many else "มูลค่า"
+    measure = f'{STATS[f["stat"]]}ของจังหวัด' if many else "มูลค่า"
     fig = px.bar(
         agg, x="value", y="soc_eco_class2", orientation="h", color="soc_eco_class1",
         category_orders={"soc_eco_class1": class1_order},
-        color_discrete_sequence=CATEGORICAL, custom_data=["soc_eco_class1", "n"],
+        color_discrete_sequence=CATEGORICAL,
+        custom_data=["soc_eco_class1", "n", "median", "mean"],
         title=f"{f['income']} ตามกลุ่มเศรษฐกิจและสังคม",
         labels={"value": f"{measure} ({UNIT_LABEL})", "soc_eco_class2": ""},
     )
@@ -526,7 +552,8 @@ def group_chart(df: pd.DataFrame, f: dict):
         hovertemplate=(
             "<b>%{y}</b><br>กลุ่มหลัก: %{customdata[0]}<br>"
             + measure + ": %{x:,.0f} " + UNIT_LABEL
-            + ("<br>เฉลี่ยจาก %{customdata[1]} จังหวัด" if many else "")
+            + ("<br>จาก %{customdata[1]} จังหวัด"
+               "<br>มัธยฐาน %{customdata[2]:,.0f} · ค่าเฉลี่ย %{customdata[3]:,.0f}" if many else "")
             + "<extra></extra>"
         ),
     )
@@ -719,8 +746,8 @@ def render_footer() -> None:
         f'<div class="row">{icon("database", 15, MUTED)}<div>แหล่งข้อมูล: '
         'สำนักงานสถิติแห่งชาติ (ตามคอลัมน์ source ในไฟล์ data.xlsx)</div></div>'
         f'<div class="row">{icon("triangle-alert", 15, MUTED)}<div>ข้อจำกัด: ไฟล์มีทั้งหมวดยอดรวม'
-        'และหมวดย่อย การรวมทุกแถวจะนับรายได้ซ้ำ ค่าเฉลี่ยในแดชบอร์ดเป็นค่าเฉลี่ยอย่างง่าย'
-        'ของรายการ ไม่ใช่ค่าเฉลี่ยของประชากร เพราะไม่มีจำนวนครัวเรือนสำหรับถ่วงน้ำหนัก</div></div>'
+        'และหมวดย่อย การรวมทุกแถวจะนับรายได้ซ้ำ มัธยฐานและค่าเฉลี่ยในแดชบอร์ด'
+        'คำนวณจากรายการ (จังหวัด × กลุ่มย่อย) ไม่ใช่ค่าของประชากร เพราะไม่มีจำนวนครัวเรือนสำหรับถ่วงน้ำหนัก</div></div>'
         f'<div class="row">{icon("chart-column", 15, MUTED)}<div>พัฒนาด้วย Python · Streamlit · Plotly '
         '· ไอคอนจาก Lucide</div></div></div>'
     )
@@ -770,8 +797,10 @@ def main() -> None:
     fig, many = province_chart(df, f, view)
     st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
     if many:
-        note("แต่ละจังหวัดมีหลายกลุ่มเศรษฐกิจและสังคม ค่าในกราฟคือค่าเฉลี่ยอย่างง่ายของกลุ่มย่อย "
-             "(ไม่ถ่วงน้ำหนัก) เลือกกลุ่มย่อยในตัวกรองเพื่อดูค่าจริงของกลุ่มนั้น")
+        note(f'แต่ละจังหวัดมีหลายกลุ่มเศรษฐกิจและสังคม ค่าในกราฟคือ<b>{STATS[f["stat"]]}</b>'
+             "ของกลุ่มย่อย (ไม่ถ่วงน้ำหนักด้วยจำนวนครัวเรือน) ไม่ใช่รายได้เฉลี่ยของประชากรทั้งจังหวัด "
+             "เลือกกลุ่มย่อยในตัวกรองเพื่อเทียบจังหวัดแบบกลุ่มต่อกลุ่ม "
+             "หรือชี้ที่แท่งกราฟเพื่อดูทั้งสองค่าและกลุ่มที่มีค่าสูงสุด")
 
     # Section 2: groups & composition
     section("chart-no-axes-combined", "กลุ่มเศรษฐกิจและสังคม และองค์ประกอบรายได้",
@@ -782,12 +811,13 @@ def main() -> None:
         fig, many = group_chart(df, f)
         st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
         if many:
-            st.caption("ค่าเฉลี่ยอย่างง่ายของทุกจังหวัดในกลุ่มนั้น (ไม่ถ่วงน้ำหนัก)")
+            st.caption(f'{STATS[f["stat"]]}ของทุกจังหวัดในกลุ่มนั้น (ไม่ถ่วงน้ำหนัก)')
     with right:
         fig, many = composition_chart(df, f)
         st.plotly_chart(fig, width="stretch", config=PLOTLY_CONFIG)
         st.caption("แถบสีเขียวคือหมวดย่อยที่อยู่ภายใต้หมวดรายได้ที่เลือก"
-                   + (" · ค่าเฉลี่ยอย่างง่ายของรายการที่ผ่านตัวกรอง" if many else ""))
+                   + (" · ใช้ค่าเฉลี่ยเสมอ เพราะค่าเฉลี่ยของหมวดย่อยรวมกันได้เท่ากับยอดรวม"
+                      " (มัธยฐานไม่มีคุณสมบัตินี้)" if many else ""))
 
     # Section 3: year comparison
     section("calendar-days", "เปรียบเทียบระหว่างปี")
