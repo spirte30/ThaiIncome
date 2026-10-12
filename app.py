@@ -187,7 +187,7 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
 
 /* KPI cards: label -> value + unit -> sub. Rows share one subgrid so labels, values
    and subs line up across a row and every card in a row has the same height.
-   Column count follows the width of the content area, not the viewport. */
+   Phones (content < 600px) get 2 columns, then 3+2, then 5 from a 1440px viewport. */
 .kpi-wrap {{ container-type:inline-size; margin:0 0 var(--s2); }}
 .kpi-grid {{
   display:grid; gap:var(--s3); grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -205,7 +205,8 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
   .kpi, .kpi.wide {{ grid-column:span 2; }}
   .kpi:nth-child(n+4) {{ grid-column:span 3; }}
 }}
-@container (min-width: 900px) {{
+/* One row of five only on wide viewports; below that 3+2 keeps the numbers large. */
+@media (min-width: 1440px) {{
   .kpi-grid {{ grid-template-columns:repeat(5, minmax(0, 1fr)); }}
   .kpi, .kpi.wide, .kpi:nth-child(n+4) {{ grid-column:auto; }}
 }}
