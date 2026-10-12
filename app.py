@@ -253,10 +253,10 @@ html, body, .stApp, .stMarkdown, button, input, select, textarea {{
 .chart-sub {{ color:var(--muted); font-size:var(--fs-sm); line-height:1.5; margin:0 0 var(--s1); }}
 
 /* Charts with a narrow-screen variant (labels above bars below 640px) */
-.st-key-group_chart_narrow {{ display:none; }}
+.st-key-group_chart_narrow, .st-key-year_chart_narrow {{ display:none; }}
 @media (max-width: 640px) {{
-  .st-key-group_chart_wide {{ display:none; }}
-  .st-key-group_chart_narrow {{ display:block; }}
+  .st-key-group_chart_wide, .st-key-year_chart_wide {{ display:none; }}
+  .st-key-group_chart_narrow, .st-key-year_chart_narrow {{ display:block; }}
 }}
 
 /* Sidebar */
@@ -1086,7 +1086,8 @@ def main() -> None:
         if fig is None:
             note("ไม่มีข้อมูลสำหรับการเปรียบเทียบระหว่างปี", "warn")
         else:
-            show_chart(fig)
+            show_chart(fig, labels_above_bars(fig, list(fig.layout.yaxis.tickvals), row_px=64),
+                       key="year_chart")
 
     # Section 4: table
     section("table", "ตารางข้อมูล", "ข้อมูลที่ผ่านตัวกรองทั้งหมด ค่าเป็นค่าจริงจากไฟล์ต้นฉบับ")
