@@ -1,9 +1,19 @@
 [theme]
 base = "light"
-primaryColor = "#0F9D8A"
+# Mirrors the tokens in app.py (CSS :root). primaryColor is the text-safe teal
+# (TEAL_INK, 5.2:1 on white); the brighter TEAL is kept for chart bars and icons.
+primaryColor = "#0B7A6B"
 backgroundColor = "#F5F7FA"
 secondaryBackgroundColor = "#EAEFF5"
 textColor = "#0F1B2D"
+linkColor = "#0B7A6B"
+borderColor = "#DCE3EC"
+font = "Sarabun:https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap"
+baseRadius = "8px"
+showWidgetBorder = true
+dataframeBorderColor = "#E6EBF1"
+dataframeHeaderBackgroundColor = "#F1F4F8"
+dataframeHeaderTextColor = "#5B6B7F"
 
 [browser]
 gatherUsageStats = false
